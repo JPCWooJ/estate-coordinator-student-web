@@ -1,36 +1,37 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Estate Coordinator Student Web
 
-## Getting Started
+Slice 1 is the controlled-access student web vertical slice for Matter Opening. It implements passwordless access, beta acknowledgement, an authenticated matter home, the canon-defined Matter Opening conversation, confirmation/correction, persistence, and resume. It intentionally stops before Estate Blueprint discovery.
 
-First, run the development server:
+## Architecture
 
-```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+- Next.js App Router and TypeScript
+- Supabase Auth, Postgres, and row-level security
+- OpenAI Responses API with strict structured output for narrative interpretation
+- Deterministic application workflow state and server-side validation
+
+The workflow code is derived from `EC_Matter_Opening_Conversational_Workflow.md@0.1` and the approved `EC_Student_Web_MVP_Brief.md@0.1`. Those canonical documents remain outside this repository and are not modified here.
+
+## Local setup
+
+1. Copy `.env.example` to `.env.local` and provide the Supabase project URL, publishable key, server secret key, and OpenAI API key.
+2. Apply `supabase/migrations/20260817190000_slice_1.sql` to a development Supabase project.
+3. Invite approved synthetic test users through Supabase Auth. Public self-sign-up is disabled by the application request.
+4. Run `npm run dev`.
+
+`EC_SYNTHETIC_TEST_MODE=true` enables the isolated browser-test harness. Never enable it in a deployment. The harness holds synthetic records only and is not a substitute for Supabase persistence or RLS.
+
+## Verification
+
+```text
+npm run lint
+npm run typecheck
+npm test
+npm run build
+npm run test:e2e
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Run `supabase/tests/rls_isolation.sql` against the migrated development database to prove that one authenticated user cannot read or mutate another user's matter.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## Scope boundary
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
-
-## Learn More
-
-To learn more about Next.js, take a look at the following resources:
-
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
-
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
-
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+This repository does not implement Blueprint stages, document or evidence ingestion, existing-plan review, later estate lifecycle stages, an admin portal, vector search, or multi-agent orchestration. All included examples and automated tests use synthetic data.
