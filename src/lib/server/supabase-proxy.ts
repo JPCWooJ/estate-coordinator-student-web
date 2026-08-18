@@ -14,11 +14,14 @@ export async function refreshSupabaseSession(request: NextRequest) {
   const supabase = createServerClient(url, key, {
     cookies: {
       getAll: () => request.cookies.getAll(),
-      setAll: (values) => {
+      setAll: (values, headers) => {
         for (const { name, value } of values) request.cookies.set(name, value);
         response = NextResponse.next({ request });
         for (const { name, value, options } of values) {
           response.cookies.set(name, value, options);
+        }
+        for (const [name, value] of Object.entries(headers)) {
+          response.headers.set(name, value);
         }
       },
     },
