@@ -16,6 +16,7 @@ import {
   getCanonicalQuestion,
   getProgress,
   getStepLabel,
+  prepareMatterOpeningForConfirmation,
 } from "@/lib/domain/workflow";
 import { interpretMatterOpeningTurn } from "./interpreter";
 import { createAdminSupabaseClient, createUserSupabaseClient } from "./supabase";
@@ -103,12 +104,16 @@ function summarize(matter: SyntheticMatter): MatterSummary {
 }
 
 function viewSynthetic(matter: SyntheticMatter): MatterView {
+  const record =
+    matter.state.step === "MO08_CONFIRM"
+      ? prepareMatterOpeningForConfirmation(matter.record)
+      : matter.record;
   return {
     ...summarize(matter),
-    record: matter.record,
+    record,
     workflowState: matter.state,
     messages: matter.messages,
-    currentQuestion: getCanonicalQuestion(matter.state, matter.record),
+    currentQuestion: getCanonicalQuestion(matter.state, record),
     savedAt: matter.updatedAt,
   };
 }
@@ -243,8 +248,12 @@ export async function getMatter(
   if (messageError) throw messageError;
   if (!opening) return null;
 
-  const record = MatterOpeningRecordSchema.parse(opening.record);
+  const storedRecord = MatterOpeningRecordSchema.parse(opening.record);
   const state = WorkflowStateSchema.parse(opening.workflow_state);
+  const record =
+    state.step === "MO08_CONFIRM"
+      ? prepareMatterOpeningForConfirmation(storedRecord)
+      : storedRecord;
   return {
     id: matter.id,
     name: matter.name,

@@ -9,7 +9,11 @@ import {
   OutcomeCode,
   WorkflowState,
 } from "./matter-opening";
-import { applyAcceptedInterpretation, confirmOpening } from "./workflow";
+import {
+  applyAcceptedInterpretation,
+  confirmOpening,
+  prepareMatterOpeningForConfirmation,
+} from "./workflow";
 
 function interpretation(
   step: OpeningStep,
@@ -273,23 +277,51 @@ describe("Matter Opening deterministic workflow", () => {
     expect(result.state.stop?.immediate_action).toBe("Contact the estate attorney.");
   });
 
-  it("requires the exit gate and produces a confirmed immutable endpoint state", () => {
+  it("derives the discovery recommendation before review and passes the unchanged exit gate", () => {
     const base = createInitialRecord("aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa");
     const record: MatterOpeningRecord = {
       ...base,
       desired_outcomes: ["intended_transfer"],
       top_three_priorities: [
-        "intended_transfer",
         "incapacity_readiness",
+        "intended_transfer",
         "tax_minimization",
       ],
       principal_definition_of_success: "A coordinated synthetic plan.",
       current_plan_snapshot: "No existing plan.",
-      selected_discovery_path: "goals, values, and distribution intentions",
-      single_next_action: "Begin discovery.",
     };
-    const state = { ...createInitialWorkflowState(), step: "MO08_CONFIRM" as const };
-    const result = confirmOpening(record, state, "2026-08-17T20:00:00.000Z");
+    const confirmState = {
+      ...createInitialWorkflowState(),
+      step: "MO08_CONFIRM" as const,
+    };
+    expect(() => confirmOpening(record, confirmState)).toThrow(
+      "The Matter Opening exit gate is not complete.",
+    );
+
+    const recovered = prepareMatterOpeningForConfirmation(record);
+    expect(recovered.selected_discovery_path).toBe("incapacity and continuity");
+    expect(confirmOpening(recovered, confirmState).state.step).toBe("CONFIRMED");
+
+    const prepared = advance(
+      record,
+      { ...createInitialWorkflowState(), step: "MO08_HOUSE_IN_ORDER" as const },
+      interpretation("MO08_HOUSE_IN_ORDER", {
+        house_in_order_concern: "none identified",
+      }),
+    );
+    expect(prepared.state.step).toBe("MO08_CONFIRM");
+    expect(prepared.record.selected_discovery_path).toBe(
+      "incapacity and continuity",
+    );
+    expect(prepared.record.single_next_action).toBe(
+      "Begin the first selected discovery module using only the confirmed Matter Opening information.",
+    );
+
+    const result = confirmOpening(
+      prepared.record,
+      prepared.state,
+      "2026-08-17T20:00:00.000Z",
+    );
 
     expect(result.state.step).toBe("CONFIRMED");
     expect(result.record.principal_confirmed).toBe("yes");
