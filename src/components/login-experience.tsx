@@ -1,5 +1,6 @@
 "use client";
 
+import { createBrowserClient } from "@supabase/ssr";
 import { useRouter } from "next/navigation";
 import { FormEvent, useEffect, useState } from "react";
 
@@ -15,13 +16,65 @@ export function LoginExperience({ syntheticMode }: { syntheticMode: boolean }) {
   const [email, setEmail] = useState("");
   const [status, setStatus] = useState("");
   const [busy, setBusy] = useState(false);
+
   useEffect(() => {
-    fetch("/api/session")
-      .then((response) => response.json())
-      .then((data) => {
-        if (data.user) router.replace("/home");
-      })
-      .catch(() => undefined);
+    let cancelled = false;
+
+    async function restoreSession() {
+      const hash = new URLSearchParams(window.location.hash.slice(1));
+      const accessToken = hash.get("access_token");
+      const refreshToken = hash.get("refresh_token");
+
+      if (accessToken && refreshToken) {
+        window.history.replaceState(
+          null,
+          "",
+          `${window.location.pathname}${window.location.search}`,
+        );
+
+        const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
+        const key = process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY;
+        if (!url || !key) {
+          if (!cancelled) setStatus("Sign-in configuration is unavailable.");
+          return;
+        }
+
+        if (!cancelled) {
+          setBusy(true);
+          setStatus("Signing you in…");
+        }
+
+        const supabase = createBrowserClient(url, key);
+        const { error } = await supabase.auth.setSession({
+          access_token: accessToken,
+          refresh_token: refreshToken,
+        });
+
+        if (cancelled) return;
+        setBusy(false);
+
+        if (error) {
+          setStatus("The invitation link could not be completed. Request a new sign-in link.");
+          return;
+        }
+
+        router.replace("/home");
+        router.refresh();
+        return;
+      }
+
+      fetch("/api/session", { cache: "no-store" })
+        .then((response) => response.json())
+        .then((data) => {
+          if (!cancelled && data.user) router.replace("/home");
+        })
+        .catch(() => undefined);
+    }
+
+    void restoreSession();
+    return () => {
+      cancelled = true;
+    };
   }, [router]);
 
   async function requestLink(event: FormEvent<HTMLFormElement>) {
