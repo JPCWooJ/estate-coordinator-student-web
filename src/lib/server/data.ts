@@ -287,7 +287,7 @@ export async function submitMatterTurn(args: {
   const current = await getMatter(args.userId, args.matterId);
   if (!current) throw new Error("Matter not found.");
   if (["STOPPED", "CONFIRMED"].includes(current.workflowState.step)) {
-    throw new Error("This Matter Opening is not accepting additional turns.");
+    throw new Error("This planning flow is not accepting additional turns.");
   }
   if (
     current.messages.some(

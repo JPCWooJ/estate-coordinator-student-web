@@ -40,7 +40,7 @@ const DISCOVERY_PATH_BY_PRIORITY: Record<
 };
 
 const MATTER_OPENING_NEXT_ACTION =
-  "Begin the first selected discovery module using only the confirmed Matter Opening information.";
+  "Open Your Estate Blueprint and move into planning recommendations and profile review.";
 
 export function prepareMatterOpeningForConfirmation(
   record: MatterOpeningRecord,
@@ -67,9 +67,9 @@ export function getCanonicalQuestion(
 ): string {
   switch (state.step) {
     case "MO01_OUTCOMES":
-      return `If this estate-planning process works exactly as you hope, what will it accomplish for you?\n\nIf helpful, consider:\n${OUTCOME_LIST}`;
+      return `If this estate-planning process worked exactly as you hope, what would it accomplish for you?\n\nPlease include your top priorities in order of importance if you can.\n\nIf helpful, consider:\n${OUTCOME_LIST}`;
     case "MO01_PRIORITIES":
-      return "Which three of these outcomes matter most to you? Please put them in priority order.";
+      return "Which three of these outcomes matter most to you? Put them in priority order.";
     case "MO01_GOAL_FOLLOWUP":
       return state.active_goal_followup
         ? OUTCOME_FOLLOW_UPS[state.active_goal_followup]
@@ -97,29 +97,32 @@ export function getCanonicalQuestion(
     case "MO07_PARTICIPANTS":
       return "Who else should participate in creating, maintaining, or eventually using this plan?";
     case "MO08_HOUSE_IN_ORDER":
-      return "Is there anything else that would prevent you from feeling confident that your estate-planning house is in order?";
+      return "What would you need to see, understand, or have confirmed to feel confident your plan is complete, current, and working as intended?";
     case "MO08_CONFIRM":
       return "Is this an accurate statement of what you want us to accomplish and where we should begin?";
     case "STOPPED":
       return state.stop?.immediate_action ?? "Please contact the appropriate professional before continuing.";
     case "CONFIRMED":
-      return "Matter Opening is confirmed.";
+      return "Planning summary is confirmed.";
     default:
       return record.principal_definition_of_success;
   }
 }
 
 export function getStepLabel(step: OpeningStep): string {
-  if (step.startsWith("MO01")) return "MO-01 · Desired outcomes";
-  if (step.startsWith("MO02")) return "MO-02 · People affected";
-  if (step.startsWith("MO03")) return "MO-03 · Current plan";
-  if (step === "MO04_TIMING") return "MO-04 · Timing";
-  if (step.startsWith("MO05")) return "MO-05 · Geographic and complexity footprint";
-  if (step.startsWith("MO06")) return "MO-06 · Contact directory";
-  if (step === "MO07_PARTICIPANTS") return "MO-07 · Other participants";
-  if (step.startsWith("MO08")) return "MO-08 · Confirmation";
-  if (step === "STOPPED") return "Matter Opening · Professional follow-up required";
-  return "Matter Opening · Confirmed";
+  if (step === "MO01_OUTCOMES" || step === "MO01_PRIORITIES") {
+    return "Estate Planning Priorities";
+  }
+  if (step === "MO01_GOAL_FOLLOWUP") return "Priorities Clarification";
+  if (step.startsWith("MO02")) return "People and support";
+  if (step.startsWith("MO03")) return "Current planning context";
+  if (step === "MO04_TIMING") return "Timing and urgency";
+  if (step.startsWith("MO05")) return "Footprint and complexity";
+  if (step.startsWith("MO06")) return "Contact details";
+  if (step === "MO07_PARTICIPANTS") return "People and participants";
+  if (step.startsWith("MO08")) return "Planning Summary";
+  if (step === "STOPPED") return "Professional follow-up required";
+  return "Planning Summary confirmed";
 }
 
 export function getProgress(step: OpeningStep): number {
@@ -168,6 +171,9 @@ function applyPatchForStep(
 
   if (state.step === "MO01_OUTCOMES") {
     if (patch.desired_outcomes) next.desired_outcomes = patch.desired_outcomes;
+    if (patch.top_three_priorities && patch.top_three_priorities.length === 3) {
+      next.top_three_priorities = patch.top_three_priorities;
+    }
     if (patch.principal_definition_of_success) {
       next.principal_definition_of_success = patch.principal_definition_of_success;
     }
@@ -306,7 +312,14 @@ function nextState(
 
   switch (state.step) {
     case "MO01_OUTCOMES":
-      next.step = "MO01_PRIORITIES";
+      if (record.top_three_priorities.length >= 3) {
+        const queue = [...record.top_three_priorities];
+        next.active_goal_followup = queue.shift() ?? null;
+        next.goal_followup_queue = queue;
+        next.step = next.active_goal_followup ? "MO01_GOAL_FOLLOWUP" : "MO02_PEOPLE";
+      } else {
+        next.step = "MO01_PRIORITIES";
+      }
       break;
     case "MO01_PRIORITIES": {
       const queue = [...record.top_three_priorities];
@@ -408,7 +421,7 @@ export function confirmOpening(
   confirmedAt = new Date().toISOString(),
 ): WorkflowResult {
   if (state.step !== "MO08_CONFIRM") {
-    throw new Error("Matter Opening cannot be confirmed before the review gate.");
+    throw new Error("Planning summary cannot be confirmed before the review gate.");
   }
   if (
     record.desired_outcomes.length === 0 ||
@@ -418,7 +431,7 @@ export function confirmOpening(
     record.selected_discovery_path === "unknown" ||
     record.single_next_action === "unknown"
   ) {
-    throw new Error("The Matter Opening exit gate is not complete.");
+    throw new Error("The planning summary exit gate is not complete.");
   }
 
   const updatedRecord = MatterOpeningRecordSchema.parse({
@@ -432,6 +445,7 @@ export function confirmOpening(
     record: updatedRecord,
     state: updatedState,
     assistantMessage:
-      "Matter Opening is confirmed and saved. This Slice 1 experience stops here before any Estate Blueprint stage begins.",
+      "Your planning summary is confirmed and saved. Next, you will begin Building your Estate Blueprint from what you confirmed here.",
   };
 }
+

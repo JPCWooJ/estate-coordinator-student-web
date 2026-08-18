@@ -70,10 +70,11 @@ export function LoginExperience({ syntheticMode }: { syntheticMode: boolean }) {
       <section className="auth-panel" aria-labelledby="welcome-title">
         <Brand />
         <div className="eyebrow">Private student experience</div>
-        <h1 id="welcome-title">Open your estate-planning matter</h1>
+        <h1 id="welcome-title">Start your estate-planning priorities journey</h1>
         <p className="lede">
-          A guided conversation to establish your goals, people, timing, and
-          planning context before any Estate Blueprint work begins.
+          A guided, one-question-at-a-time conversation that captures what matters
+          most for your family and your goals before Estate Blueprint recommendations
+          begin.
         </p>
 
         <form onSubmit={requestLink} className="auth-form">
@@ -114,23 +115,23 @@ export function LoginExperience({ syntheticMode }: { syntheticMode: boolean }) {
         </p>
         <p className="auth-footnote">
           Access is limited to invited participants. No application password is
-          collected.
+          collected, and your answers are not treated as a legal filing.
         </p>
       </section>
       <aside className="auth-aside" aria-label="Experience overview">
         <div>
           <span className="aside-number">01</span>
-          <h2>Matter Opening</h2>
+          <h2>Estate Planning Priorities</h2>
           <p>One question at a time, with narrative answers and only triggered follow-ups.</p>
         </div>
         <div>
           <span className="aside-number">02</span>
-          <h2>Confirm the record</h2>
+          <h2>Review your summary</h2>
           <p>Review and correct the structured opening before it becomes confirmed.</p>
         </div>
         <div>
           <span className="aside-number">03</span>
-          <h2>Resume reliably</h2>
+          <h2>Continue into your Blueprint</h2>
           <p>Your last accepted answer is the durable restart point.</p>
         </div>
       </aside>

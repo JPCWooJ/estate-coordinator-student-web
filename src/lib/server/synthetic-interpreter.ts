@@ -77,6 +77,14 @@ function baseInterpretation(step: OpeningStep): Interpretation {
   };
 }
 
+function prioritiesFromText(text: string, outcomes: OutcomeCode[]): OutcomeCode[] {
+  const ordered = findOutcomes(text).filter((outcome) =>
+    outcomes.includes(outcome),
+  );
+  const ranked = Array.from(new Set(ordered));
+  return ranked.slice(0, 3);
+}
+
 function pathFromPriorities(record: MatterOpeningRecord) {
   const first = record.top_three_priorities[0];
   const mapping: Partial<
@@ -159,6 +167,10 @@ export function interpretSyntheticTurn(
       const outcomes = findOutcomes(text);
       result.patch.desired_outcomes = outcomes.length ? outcomes : ["other"];
       result.patch.principal_definition_of_success = text;
+      const priorities = prioritiesFromText(text, outcomes);
+      if (priorities.length === 3) {
+        result.patch.top_three_priorities = priorities;
+      }
       break;
     }
     case "MO01_PRIORITIES": {
@@ -270,9 +282,16 @@ export function interpretSyntheticTurn(
       break;
     case "MO06_CONTACTS":
     case "MO06_CONTACTS_MORE": {
-      if (/no (more|contact)|ready to continue|contact(?: is)? needed|none/i.test(text)) {
+      const textLower = lower;
+      if (
+        /no (more|contact)|ready to continue|contact(?: is)? needed|not needed|none|contact needed/i.test(
+          textLower,
+        )
+      ) {
         result.signals.contacts_complete = true;
-        if (/contact(?: is)? needed|none|no contact/i.test(text)) {
+        if (
+          /contact(?: is)? needed|no contact|none|not needed|contact needed/i.test(textLower)
+        ) {
           result.patch.missing_contacts = ["CONTACT_NEEDED"];
         }
       } else {
@@ -307,7 +326,7 @@ export function interpretSyntheticTurn(
         : text;
       result.patch.selected_discovery_path = pathFromPriorities(record);
       result.patch.single_next_action =
-        "Begin the first selected discovery module using only the confirmed Matter Opening information.";
+        "Open your Estate Blueprint and move into planning recommendations and profile review.";
       break;
     case "MO08_CONFIRM":
       if (/primary home.*florida|florida.*primary home/i.test(text)) {

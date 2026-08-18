@@ -5,7 +5,7 @@ import "./globals.css";
 
 export const metadata: Metadata = {
   title: "Estate Coordinator",
-  description: "Controlled student Matter Opening experience",
+  description: "Controlled student planning-summary and blueprint transition experience",
 };
 
 export default function RootLayout({ children }: { children: ReactNode }) {

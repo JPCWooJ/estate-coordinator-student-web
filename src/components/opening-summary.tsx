@@ -9,7 +9,7 @@ export function OpeningSummary({ record }: { record: MatterOpeningRecord }) {
   return (
     <div className="summary-grid">
       <section>
-        <h3>Desired outcomes</h3>
+        <h3>What you want to accomplish</h3>
         <ul>
           {record.desired_outcomes.map((outcome) => (
             <li key={outcome}>{OUTCOME_LABELS[outcome]}</li>
@@ -25,11 +25,11 @@ export function OpeningSummary({ record }: { record: MatterOpeningRecord }) {
         </ol>
       </section>
       <section className="summary-wide">
-        <h3>Definition of success</h3>
+        <h3>Your definition of success</h3>
         <p>{valueOrUnknown(record.principal_definition_of_success)}</p>
       </section>
       <section className="summary-wide">
-        <h3>Priority details</h3>
+        <h3>Priority context</h3>
         {record.priority_details.length ? (
           <dl className="detail-list">
             {record.priority_details.map((item) => (
@@ -44,7 +44,7 @@ export function OpeningSummary({ record }: { record: MatterOpeningRecord }) {
         )}
       </section>
       <section>
-        <h3>People and interests</h3>
+        <h3>People and interests to protect</h3>
         <p>{valueOrUnknown(record.people_and_interests_snapshot)}</p>
         {record.people_circumstance_flags.length > 0 && (
           <p className="summary-note">
@@ -53,21 +53,21 @@ export function OpeningSummary({ record }: { record: MatterOpeningRecord }) {
         )}
       </section>
       <section>
-        <h3>Current plan</h3>
+        <h3>Current planning context</h3>
         <p>{valueOrUnknown(record.current_plan_snapshot)}</p>
         <p className="summary-note">
           Classification: {record.matter_classification.replaceAll("_", " ")}
         </p>
       </section>
       <section>
-        <h3>Timing</h3>
+        <h3>Timing and urgency</h3>
         <p>{valueOrUnknown(record.timing_event_or_deadline.reason)}</p>
         <p className="summary-note">
           Event: {valueOrUnknown(record.timing_event_or_deadline.event)}
         </p>
       </section>
       <section>
-        <h3>Geographic and complexity footprint</h3>
+        <h3>Household context</h3>
         <p>
           {record.geographic_and_complexity_flags.length
             ? record.geographic_and_complexity_flags.join("; ")
@@ -75,7 +75,7 @@ export function OpeningSummary({ record }: { record: MatterOpeningRecord }) {
         </p>
       </section>
       <section className="summary-wide">
-        <h3>Estate team and family contacts</h3>
+        <h3>Contacts and team</h3>
         {record.professional_and_family_contacts.length ? (
           <div className="table-wrap">
             <table>
@@ -110,7 +110,7 @@ export function OpeningSummary({ record }: { record: MatterOpeningRecord }) {
         )}
       </section>
       <section>
-        <h3>Other participants</h3>
+        <h3>Additional people involved</h3>
         <p>
           {record.other_participants.length
             ? record.other_participants.map((person) => person.name).join("; ")
@@ -118,15 +118,15 @@ export function OpeningSummary({ record }: { record: MatterOpeningRecord }) {
         </p>
       </section>
       <section>
-        <h3>House-in-order concern</h3>
+        <h3>What would make this feel complete</h3>
         <p>{valueOrUnknown(record.house_in_order_concern)}</p>
       </section>
       <section>
-        <h3>Recommended discovery path</h3>
+        <h3>Primary focus going forward</h3>
         <p>{valueOrUnknown(record.selected_discovery_path)}</p>
       </section>
       <section>
-        <h3>Single next action</h3>
+        <h3>Recommended next step</h3>
         <p>{valueOrUnknown(record.single_next_action)}</p>
       </section>
     </div>

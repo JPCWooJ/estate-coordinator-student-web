@@ -14,6 +14,7 @@ import {
   confirmOpening,
   prepareMatterOpeningForConfirmation,
 } from "./workflow";
+import { buildPlanningSummaryPdf } from "../server/planning-summary-pdf";
 
 function interpretation(
   step: OpeningStep,
@@ -73,7 +74,7 @@ function advance(
 }
 
 describe("Matter Opening deterministic workflow", () => {
-  it("asks follow-ups only for the three ranked outcomes and ignores model stage proposals", () => {
+  it("accepts priorities in outcomes step and asks follow-ups only for the ranked three", () => {
     const matterId = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
     let record = createInitialRecord(matterId);
     let state = createInitialWorkflowState();
@@ -82,7 +83,7 @@ describe("Matter Opening deterministic workflow", () => {
       record,
       state,
       interpretation(
-        "CONFIRMED",
+        "MO01_OUTCOMES",
         {
           desired_outcomes: [
             "intended_transfer",
@@ -90,24 +91,21 @@ describe("Matter Opening deterministic workflow", () => {
             "tax_minimization",
             "legacy",
           ],
+          top_three_priorities: [
+            "intended_transfer",
+            "incapacity_readiness",
+            "tax_minimization",
+          ],
           principal_definition_of_success: "Protect the family and keep the plan simple.",
         },
       ),
     );
-    expect(result.state.step).toBe("MO01_PRIORITIES");
-    ({ record, state } = result);
-
-    result = advance(
-      record,
-      state,
-      interpretation("MO01_PRIORITIES", {
-        top_three_priorities: [
-          "intended_transfer",
-          "incapacity_readiness",
-          "tax_minimization",
-        ],
-      }),
-    );
+    expect(result.state.step).toBe("MO01_GOAL_FOLLOWUP");
+    expect(result.record.top_three_priorities).toEqual([
+      "intended_transfer",
+      "incapacity_readiness",
+      "tax_minimization",
+    ]);
     expect(result.state.active_goal_followup).toBe("intended_transfer");
     ({ record, state } = result);
 
@@ -295,7 +293,7 @@ describe("Matter Opening deterministic workflow", () => {
       step: "MO08_CONFIRM" as const,
     };
     expect(() => confirmOpening(record, confirmState)).toThrow(
-      "The Matter Opening exit gate is not complete.",
+      "The planning summary exit gate is not complete.",
     );
 
     const recovered = prepareMatterOpeningForConfirmation(record);
@@ -314,7 +312,7 @@ describe("Matter Opening deterministic workflow", () => {
       "incapacity and continuity",
     );
     expect(prepared.record.single_next_action).toBe(
-      "Begin the first selected discovery module using only the confirmed Matter Opening information.",
+      "Open Your Estate Blueprint and move into planning recommendations and profile review.",
     );
 
     const result = confirmOpening(
@@ -327,4 +325,35 @@ describe("Matter Opening deterministic workflow", () => {
     expect(result.record.principal_confirmed).toBe("yes");
     expect(result.record.confirmation_date).toBe("2026-08-17T20:00:00.000Z");
   });
+
+  it("creates a planning summary PDF for confirmed Matter Opening records", () => {
+    const record = prepareMatterOpeningForConfirmation({
+      ...createInitialRecord("aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"),
+      desired_outcomes: ["intended_transfer", "tax_minimization", "incapacity_readiness"],
+      top_three_priorities: [
+        "intended_transfer",
+        "incapacity_readiness",
+        "tax_minimization",
+      ],
+      principal_definition_of_success: "Protect the family and keep outcomes practical.",
+      people_and_interests_snapshot: "Spouse and adult children.",
+      current_plan_snapshot: "No existing plan.",
+      changes_since_current_plan: ["none"],
+      timing_event_or_deadline: {
+        reason: "Estate planning is overdue.",
+        event: "none identified",
+        date: "2026-12-01",
+        importance: "high",
+      },
+      geographic_and_complexity_flags: ["Florida property", "two rental units"],
+      professional_and_family_contacts: [],
+      other_participants: [],
+    });
+
+    const pdf = buildPlanningSummaryPdf(record);
+
+    expect(pdf.subarray(0, 5).toString()).toBe("%PDF-");
+    expect(pdf.toString("utf8")).toContain("Estate Planning Summary");
+  });
 });
+

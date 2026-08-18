@@ -15,7 +15,7 @@ async function answer(page: import("@playwright/test").Page, value: string) {
   await expect(page.locator(".save-state")).toContainText("Saved");
 }
 
-test("controlled access, canonical Matter Opening, correction, and save/resume", async ({
+test("controlled access, planning summary workflow, correction, and save/resume", async ({
   page,
 }, testInfo) => {
   const browserErrors: string[] = [];
@@ -33,12 +33,11 @@ test("controlled access, canonical Matter Opening, correction, and save/resume",
   });
   expect(resetResponse.ok, resetResponse.body).toBe(true);
   await page.getByRole("button", { name: signInButton }).click();
-  await expect(page.getByRole("heading", { name: "Controlled educational beta" })).toBeVisible();
   await page.getByRole("checkbox").check();
   await page.getByRole("button", { name: "Acknowledge and continue" }).click();
-  await page.getByRole("button", { name: "Start Matter Opening" }).click();
+  await page.getByRole("button", { name: "Start planning priorities" }).click();
 
-  await expect(page.getByText("If this estate-planning process works exactly as you hope")).toBeVisible();
+  await expect(page.getByText("If this estate-planning process worked exactly as you hope")).toBeVisible();
   await answer(
     page,
     "I want my children to inherit as intended, my family to manage affairs if I am incapacitated, and taxes and expenses kept down.",
@@ -54,32 +53,39 @@ test("controlled access, canonical Matter Opening, correction, and save/resume",
   await answer(page, "No existing plan.");
 
   await page.reload();
-  await expect(page.getByText("Why are you addressing this now")).toBeVisible();
+  await expect(page.getByLabel("Your response")).toBeVisible();
   await page.getByRole("button", { name: "Sign out" }).click();
   await page.getByRole("button", { name: signInButton }).click();
-  await page.getByRole("link", { name: "Resume matter" }).click();
-  await expect(page.getByText("Why are you addressing this now")).toBeVisible();
+  await page.getByRole("link", { name: "Resume conversation" }).click();
+  await expect(page.getByLabel("Your response")).toBeVisible();
 
   await answer(page, "I want to get organized. There is no specific deadline.");
   await answer(page, "My primary home is Florida; I own a rental property in Georgia.");
   await answer(page, "A family business and digital assets should be considered.");
-  await answer(page, "A contact is needed.");
+  await answer(page, "Jordan Lee | Harbor Counsel | estate planning | planning counsel | unknown | unknown | planning update | primary");
+  await answer(page, "No contact is needed.");
   await answer(page, "My spouse should participate now; my adult children can join later.");
   await answer(page, "No additional concern.");
 
-  await expect(page.getByRole("heading", { name: "Matter Opening record" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Planning Summary" })).toBeVisible();
+  await expect(
+    page.getByRole("link", { name: "Download draft summary (PDF)" }),
+  ).toBeVisible();
   await page.getByRole("button", { name: "I need to correct something" }).click();
   await page.getByLabel("Describe the correction").fill("My primary home is Florida, not Georgia.");
   await page.getByRole("button", { name: "Save correction" }).click();
   await expect(page.getByText("Primary home: Florida")).toBeVisible();
-  await page.getByRole("button", { name: "Confirm Matter Opening" }).click();
-  await expect(page.getByRole("heading", { name: "Matter Opening confirmed" })).toBeVisible();
+  await page.getByRole("button", { name: "Confirm planning summary" }).click();
+  await expect(page.getByRole("heading", { name: "Planning summary confirmed" })).toBeVisible();
+  await expect(
+    page.getByRole("link", { name: "Download planning summary (PDF)" }),
+  ).toBeVisible();
 
-  await page.getByRole("link", { name: "Return to matter home" }).click();
+  await page.getByRole("link", { name: "Continue to Estate Blueprint" }).click();
   await page.getByRole("button", { name: "Sign out" }).click();
   await page.getByRole("button", { name: signInButton }).click();
-  await page.getByRole("link", { name: "View confirmed record" }).click();
-  await expect(page.getByRole("heading", { name: "Matter Opening confirmed" })).toBeVisible();
+  await page.getByRole("link", { name: "View planning summary" }).click();
+  await expect(page.getByRole("heading", { name: "Planning summary confirmed" })).toBeVisible();
   await expect(page.locator("body")).not.toHaveText("");
   await expect(
     page.locator(

@@ -10,10 +10,12 @@ import { OpeningSummary } from "./opening-summary";
 
 type SessionPayload = { user: { id: string; email: string } | null };
 
-async function fetchMatterPayload(matterId: string): Promise<{
+type SessionPayloadWithMatter = {
   session: SessionPayload;
   matter: MatterView;
-}> {
+};
+
+async function fetchMatterPayload(matterId: string): Promise<SessionPayloadWithMatter> {
   const [sessionResponse, matterResponse] = await Promise.all([
     fetch("/api/session"),
     fetch(`/api/matters/${matterId}`),
@@ -138,7 +140,7 @@ export function MatterExperience({ matterId }: { matterId: string }) {
         <div className="matter-topbar">
           <div>
             <Link href="/home" className="back-link">
-              ← Matter home
+              ← Your planning workspace
             </Link>
             <h1>{matter.name}</h1>
             <p>{matter.stepLabel}</p>
@@ -150,13 +152,13 @@ export function MatterExperience({ matterId }: { matterId: string }) {
 
         <div className="progress-block">
           <div className="progress-copy">
-            <span>Matter Opening</span>
+            <span>Planning conversation</span>
             <strong>{matter.progress}%</strong>
           </div>
           <div
             className="progress-track"
             role="progressbar"
-            aria-label="Matter Opening progress"
+            aria-label="Planning conversation progress"
             aria-valuemin={0}
             aria-valuemax={100}
             aria-valuenow={matter.progress}
@@ -170,28 +172,39 @@ export function MatterExperience({ matterId }: { matterId: string }) {
             <div className="success-mark" aria-hidden="true">
               ✓
             </div>
-            <div className="eyebrow">Saved endpoint</div>
-            <h2 id="confirmed-title">Matter Opening confirmed</h2>
+            <div className="eyebrow">Planning summary</div>
+            <h2 id="confirmed-title">Planning summary confirmed</h2>
             <p>
-              The confirmed structured record is preserved for resume. This Slice
-              1 test stops here; Estate Blueprint stages are not available.
+              Your planning summary is confirmed and ready to begin the next phase.
+              Next, the product moves into Estate Blueprint with the planning
+              recommendations and profile you approved.
             </p>
             <OpeningSummary record={matter.record} />
-            <Link className="button button-primary" href="/home">
-              Return to matter home
-            </Link>
+            <div className="review-actions">
+              <a
+                className="button button-secondary"
+                href={`/api/matters/${matterId}/summary-pdf`}
+                target="_blank"
+                rel="noreferrer"
+              >
+                Download planning summary (PDF)
+              </a>
+              <Link className="button button-primary" href="/home">
+                Continue to Estate Blueprint
+              </Link>
+            </div>
           </section>
         ) : isStopped ? (
           <section className="stop-card" aria-labelledby="stop-title">
-            <div className="eyebrow">Self-service paused</div>
-            <h2 id="stop-title">Professional follow-up is required</h2>
+            <div className="eyebrow">Professional follow-up required</div>
+            <h2 id="stop-title">A qualified professional should review this next</h2>
             <p>{matter.workflowState.stop?.reason}</p>
             <strong>{matter.workflowState.stop?.immediate_action}</strong>
-            <p>Your last accepted state remains saved. This lane cannot continue here.</p>
+            <p>Your last accepted state remains saved.</p>
           </section>
         ) : (
           <div className="workspace-grid">
-            <section className="conversation" aria-label="Matter Opening conversation">
+            <section className="conversation" aria-label="Estate planning conversation">
               <div className="conversation-history" aria-live="polite">
                 {visibleMessages.map((message) => (
                   <article
@@ -207,12 +220,21 @@ export function MatterExperience({ matterId }: { matterId: string }) {
               {isReview ? (
                 <section className="review-card" aria-labelledby="review-title">
                   <div className="eyebrow">Review before confirming</div>
-                  <h2 id="review-title">Matter Opening record</h2>
+                  <h2 id="review-title">Planning Summary</h2>
                   <p>
-                    Check this concise record. Confirm it, or describe one correction
-                    and review the updated record again.
+                    Review this concise summary. Confirm it, or request one correction.
+                    You can add the correction text and continue with the updated
+                    screen.
                   </p>
                   <OpeningSummary record={matter.record} />
+                  <a
+                    className="button button-secondary"
+                    href={`/api/matters/${matterId}/summary-pdf`}
+                    target="_blank"
+                    rel="noreferrer"
+                  >
+                    Download draft summary (PDF)
+                  </a>
                   {!correcting && (
                     <div className="review-actions">
                       <button
@@ -220,7 +242,7 @@ export function MatterExperience({ matterId }: { matterId: string }) {
                         onClick={confirm}
                         disabled={busy}
                       >
-                        {busy ? "Confirming…" : "Confirm Matter Opening"}
+                        {busy ? "Confirming…" : "Confirm planning summary"}
                       </button>
                       <button
                         className="button button-secondary"
@@ -275,17 +297,20 @@ export function MatterExperience({ matterId }: { matterId: string }) {
 
             <aside className="workspace-aside">
               <h2>What to expect</h2>
-              <p>One active question at a time. Follow-ups appear only when triggered.</p>
+              <p>One active question at a time. Follow-ups appear only when needed.</p>
               <div className="boundary-note">
                 <strong>Professional boundary</strong>
                 <p>
-                  Matter Opening records goals and context. It does not provide legal,
-                  tax, or investment conclusions.
+                  This tool captures planning context and priorities only. It does
+                  not provide legal, tax, or investment conclusions.
                 </p>
               </div>
               <div className="privacy-note">
-                <strong>Use synthetic data only</strong>
-                <p>Never enter credentials, private keys, or full account identifiers.</p>
+                <strong>Protecting your information</strong>
+                <p>
+                  Never enter credentials, private keys, seed phrases, or full
+                  account identifiers.
+                </p>
               </div>
             </aside>
           </div>

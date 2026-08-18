@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-export const WORKFLOW_VERSION = "EC_MATTER_OPENING_0.1";
+export const WORKFLOW_VERSION = "EC_MATTER_OPENING_0.2";
 
 export const OutcomeCodeSchema = z.enum([
   "intended_transfer",
