@@ -21,6 +21,46 @@ const OUTCOME_LIST = Object.entries(OUTCOME_LABELS)
   .map(([, label], index) => `${index + 1}. ${label}`)
   .join("\n");
 
+const DISCOVERY_PATH_BY_PRIORITY: Record<
+  OutcomeCode,
+  ReturnType<typeof DiscoveryPathSchema.parse>
+> = {
+  intended_transfer: "goals, values, and distribution intentions",
+  tax_minimization: "tax-minimization considerations",
+  asset_protection: "asset-protection considerations",
+  support_for_others: "family, beneficiaries, and dependents",
+  distribution_control: "goals, values, and distribution intentions",
+  incapacity_readiness: "incapacity and continuity",
+  conflict_prevention: "family, beneficiaries, and dependents",
+  heir_readiness: "professional contacts and heir readiness",
+  plan_alignment: "implementation and plan-alignment verification",
+  house_in_order_assurance: "implementation and plan-alignment verification",
+  legacy: "business, charitable, and legacy planning",
+  other: "goals, values, and distribution intentions",
+};
+
+const MATTER_OPENING_NEXT_ACTION =
+  "Begin the first selected discovery module using only the confirmed Matter Opening information.";
+
+export function prepareMatterOpeningForConfirmation(
+  record: MatterOpeningRecord,
+): MatterOpeningRecord {
+  const firstPriority = record.top_three_priorities[0];
+  return MatterOpeningRecordSchema.parse({
+    ...record,
+    selected_discovery_path:
+      record.selected_discovery_path === "unknown"
+        ? firstPriority
+          ? DISCOVERY_PATH_BY_PRIORITY[firstPriority]
+          : "goals, values, and distribution intentions"
+        : record.selected_discovery_path,
+    single_next_action:
+      record.single_next_action === "unknown"
+        ? MATTER_OPENING_NEXT_ACTION
+        : record.single_next_action,
+  });
+}
+
 export function getCanonicalQuestion(
   state: WorkflowState,
   record: MatterOpeningRecord,
@@ -211,14 +251,6 @@ function applyPatchForStep(
     if (patch.house_in_order_concern) {
       next.house_in_order_concern = patch.house_in_order_concern;
     }
-    if (patch.selected_discovery_path) {
-      next.selected_discovery_path = DiscoveryPathSchema.parse(
-        patch.selected_discovery_path,
-      );
-    }
-    if (patch.single_next_action) {
-      next.single_next_action = patch.single_next_action;
-    }
   } else if (state.step === "MO08_CONFIRM") {
     if (patch.geographic_and_complexity_flags) {
       next.geographic_and_complexity_flags =
@@ -242,7 +274,10 @@ function applyPatchForStep(
     next.matter_status = "EXPEDITED_EVENT";
   }
 
-  return MatterOpeningRecordSchema.parse(next);
+  const validated = MatterOpeningRecordSchema.parse(next);
+  return state.step === "MO08_HOUSE_IN_ORDER"
+    ? prepareMatterOpeningForConfirmation(validated)
+    : validated;
 }
 
 function nextState(
