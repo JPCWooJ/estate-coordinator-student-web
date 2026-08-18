@@ -14,7 +14,7 @@ import {
 import { getCanonicalQuestion } from "@/lib/domain/workflow";
 import { interpretSyntheticTurn } from "./synthetic-interpreter";
 
-const MODEL = process.env.OPENAI_MODEL ?? "gpt-5.6-sol";
+const MODEL = "gpt-5.6-sol";
 
 export async function interpretMatterOpeningTurn(args: {
   step: OpeningStep;
