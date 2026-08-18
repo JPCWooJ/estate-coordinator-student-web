@@ -14,7 +14,7 @@ import {
 import { getCanonicalQuestion } from "@/lib/domain/workflow";
 import { interpretSyntheticTurn } from "./synthetic-interpreter";
 
-const MODEL = "gpt-5.6-sol";
+const MODEL = "gpt-5.6";
 
 export async function interpretMatterOpeningTurn(args: {
   step: OpeningStep;
@@ -78,7 +78,12 @@ export async function interpretMatterOpeningTurn(args: {
     }
   }
 
-  throw new Error("The response could not be interpreted safely.", {
-    cause: lastError,
+  console.error("Matter Opening interpretation failed", {
+    model: MODEL,
+    error: lastError,
   });
+  throw new Error(
+    "The AI interpretation service could not process this response. Please try again.",
+    { cause: lastError },
+  );
 }
