@@ -55,9 +55,6 @@ export function OpeningSummary({ record }: { record: MatterOpeningRecord }) {
       <section>
         <h3>Current planning context</h3>
         <p>{valueOrUnknown(record.current_plan_snapshot)}</p>
-        <p className="summary-note">
-          Classification: {record.matter_classification.replaceAll("_", " ")}
-        </p>
       </section>
       <section>
         <h3>Timing and urgency</h3>
@@ -110,24 +107,12 @@ export function OpeningSummary({ record }: { record: MatterOpeningRecord }) {
         )}
       </section>
       <section>
-        <h3>Additional people involved</h3>
+        <h3>People who should help</h3>
         <p>
           {record.other_participants.length
             ? record.other_participants.map((person) => person.name).join("; ")
             : "None identified"}
         </p>
-      </section>
-      <section>
-        <h3>What would make this feel complete</h3>
-        <p>{valueOrUnknown(record.house_in_order_concern)}</p>
-      </section>
-      <section>
-        <h3>Primary focus going forward</h3>
-        <p>{valueOrUnknown(record.selected_discovery_path)}</p>
-      </section>
-      <section>
-        <h3>Recommended next step</h3>
-        <p>{valueOrUnknown(record.single_next_action)}</p>
       </section>
     </div>
   );
