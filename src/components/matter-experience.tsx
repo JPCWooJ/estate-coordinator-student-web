@@ -80,14 +80,18 @@ export function MatterExperience({ matterId }: { matterId: string }) {
     setError("");
     setSaveStatus("Saving…");
     pendingTurnKey.current ??= crypto.randomUUID();
-    const response = await fetch(`/api/matters/${matterId}/turns`, {
+    const response = await fetch(
+      `/api/matters/${matterId}/${correcting ? "corrections" : "turns"}`,
+      {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        turnKey: pendingTurnKey.current,
-        answer,
-      }),
-    });
+      body: JSON.stringify(
+        correcting
+          ? { turnKey: pendingTurnKey.current, correction: answer }
+          : { turnKey: pendingTurnKey.current, answer },
+      ),
+      },
+    );
     const data = await response.json();
     setBusy(false);
     if (!response.ok) {
@@ -99,7 +103,7 @@ export function MatterExperience({ matterId }: { matterId: string }) {
     setMatter(data.matter);
     setInterviewStarted(true);
     setAnswer("");
-    setCorrecting(false);
+    setCorrecting(Boolean(data.matter.workflowState.clarification));
     setSaveStatus(`Saved ${new Date(data.matter.savedAt).toLocaleTimeString()}`);
   }
 
@@ -131,30 +135,22 @@ export function MatterExperience({ matterId }: { matterId: string }) {
 
   const isReview = matter.workflowState.step === "MO08_CONFIRM";
   const isStopped = matter.workflowState.step === "STOPPED";
-  const isConfirmed = matter.workflowState.step === "CONFIRMED";
+  const isConfirmed = matter.workflowState.step === "BLUEPRINT_READY";
   const lastAssistantMessage = matter.messages.at(-1);
-  const isClarificationMessage =
-    !isConfirmed &&
-    lastAssistantMessage?.role === "assistant" &&
-    lastAssistantMessage.step === matter.workflowState.step &&
-    !lastAssistantMessage.content.includes("\n\n");
   const isStartingInterview =
     !isReview &&
     !isStopped &&
     !isConfirmed &&
     matter.workflowState.step === "MO01_OUTCOMES" &&
     !interviewStarted;
-  const hideLastAssistant =
-    !isConfirmed &&
-    !isReview &&
-    lastAssistantMessage?.role === "assistant" &&
-    lastAssistantMessage.step === matter.workflowState.step;
+  const hideLastAssistant = Boolean(
+    matter.workflowState.clarification &&
+      lastAssistantMessage?.role === "assistant",
+  );
   const visibleMessages = hideLastAssistant
     ? matter.messages.slice(0, -1)
     : matter.messages;
-  const questionText = isClarificationMessage
-    ? lastAssistantMessage.content
-    : matter.currentQuestion;
+  const questionText = matter.currentQuestion;
 
   return (
     <div className="app-shell">
@@ -198,24 +194,15 @@ export function MatterExperience({ matterId }: { matterId: string }) {
             <div className="eyebrow">Planning summary</div>
             <h2 id="confirmed-title">Planning summary confirmed</h2>
             <p>
-              Your planning summary is confirmed. Estate Blueprint is the next stage
-              and will be based on the priorities, people, and context you confirmed
-              here.
+              Your Planning Summary is confirmed and now serves as Stage 1 of your
+              Estate Blueprint.
             </p>
             <p>
-              The Blueprint stage is not yet available in this release. You can keep
-              your planning summary and continue when the next stage is deployed.
+              Stage 2 is not yet available in this release. Your confirmed baseline
+              is saved and ready to continue without repeating these questions.
             </p>
             <OpeningSummary record={matter.record} />
             <div className="review-actions">
-              <a
-                className="button button-secondary"
-                href={`/api/matters/${matterId}/summary-pdf`}
-                target="_blank"
-                rel="noreferrer"
-              >
-                Download planning summary (PDF)
-              </a>
               <Link className="button button-primary" href="/home">
                 Return to planning workspace
               </Link>
@@ -254,6 +241,15 @@ export function MatterExperience({ matterId }: { matterId: string }) {
                     screen.
                   </p>
                   <OpeningSummary record={matter.record} />
+                  {matter.workflowState.clarification && (
+                    <article
+                      className="active-question"
+                      aria-labelledby="correction-question-label"
+                    >
+                      <span id="correction-question-label">Estate Coordinator</span>
+                      <p>{matter.currentQuestion}</p>
+                    </article>
+                  )}
                   {!correcting && (
                     <div className="review-actions">
                       <button

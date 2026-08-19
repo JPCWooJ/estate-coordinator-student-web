@@ -37,6 +37,8 @@ const CURRENT_PLAN_STATUS_LABEL: Record<
   review_requested: "Review by another professional may be helpful",
   update_needed: "Your plan may need updates",
   implementation_or_organization_needed: "Implementation or organization help is still needed",
+  current: "Your current plan is believed to remain current",
+  unknown: "Plan status is not yet known",
 };
 
 function valueOrUnknown(value: string) {
@@ -57,7 +59,7 @@ function formatPriorityContext(record: MatterOpeningRecord) {
 }
 
 const DEFAULT_NEXT_STEP =
-  "After confirming this summary, the Estate Blueprint stage will use this planning context to build recommendations.";
+  "Confirming this summary enters the Estate Blueprint with Stage 1 complete; Stage 2 continues from this planning baseline.";
 
 export function buildPrincipalPlanningSummary(
   record: MatterOpeningRecord,

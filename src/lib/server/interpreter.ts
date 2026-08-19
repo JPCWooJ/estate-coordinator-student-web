@@ -7,83 +7,95 @@ import {
   Interpretation,
   InterpretationSchema,
   MatterOpeningRecord,
-  OpeningStep,
+  PlanningSummaryCorrection,
+  PlanningSummaryCorrectionSchema,
   WorkflowState,
-  WORKFLOW_VERSION,
 } from "@/lib/domain/matter-opening";
-import { getCanonicalQuestion } from "@/lib/domain/workflow";
-import { interpretSyntheticTurn } from "./synthetic-interpreter";
+import { syntheticModeEnabled } from "./auth";
+import {
+  interpretSyntheticAnswer,
+  interpretSyntheticCorrection,
+} from "./synthetic-interpreter";
 
 const MODEL = "gpt-5.6";
 
-export async function interpretMatterOpeningTurn(args: {
-  step: OpeningStep;
+function client() {
+  const apiKey = process.env.OPENAI_API_KEY;
+  if (!apiKey) throw new Error("The Estate Coordinator service is not configured.");
+  return new OpenAI({ apiKey });
+}
+
+export async function interpretMatterOpeningAnswer(input: {
+  question: string;
   answer: string;
   record: MatterOpeningRecord;
   state: WorkflowState;
 }): Promise<Interpretation> {
-  if (process.env.EC_SYNTHETIC_TEST_MODE === "true") {
-    return interpretSyntheticTurn(
-      args.step,
-      args.answer,
-      args.record,
-      args.state,
-    );
-  }
+  if (syntheticModeEnabled()) return interpretSyntheticAnswer(input);
 
-  if (!process.env.OPENAI_API_KEY) {
-    throw new Error("OPENAI_API_KEY is required for conversational interpretation.");
-  }
-
-  const client = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
-  const question = getCanonicalQuestion(args.state, args.record);
-  const input = [
-    {
-      role: "system" as const,
-      content: `You are the interpretation component for the Estate Coordinator Matter Opening workflow ${WORKFLOW_VERSION}. Interpret only the student's answer to the current approved question. Propose structured updates; do not decide workflow progression, write data, provide legal or tax conclusions, invent missing facts, or ask more than one clarification question. Preserve unknown, not decided, and not applicable. Use null for every patch field not directly supported by the answer. Contact email and phone fields are structured but must never be repeated in the acknowledgement. A death, incapacity, suspected coercion or exploitation, uncertain authority, imminent consequential deadline, or comparable mandatory-stop condition must set stop.triggered. proposed_next_step is advisory only and is ignored by the application.`,
-    },
-    {
-      role: "user" as const,
-      content: JSON.stringify({
-        current_step: args.step,
-        approved_question: question,
-        answer: args.answer,
-        confirmed_record: args.record,
-        workflow_state: args.state,
-      }),
-    },
-  ];
-
-  let lastError: unknown;
-  for (let attempt = 0; attempt < 2; attempt += 1) {
-    try {
-      const response = await client.responses.parse({
-        model: MODEL,
-        reasoning: { effort: "xhigh" },
-        store: false,
-        input,
-        text: {
-          format: zodTextFormat(
-            InterpretationSchema,
-            "matter_opening_interpretation",
-          ),
-        },
-      });
-      if (!response.output_parsed) {
-        throw new Error("The model did not return a structured interpretation.");
-      }
-      return InterpretationSchema.parse(response.output_parsed);
-    } catch (error) {
-      lastError = error;
-    }
-  }
-
-  console.error("Matter Opening interpretation failed", {
+  const response = await client().responses.parse({
     model: MODEL,
-    error: lastError,
+    input: [
+      {
+        role: "system",
+        content:
+          "You interpret one approved Estate Coordinator question. Return exactly one explicit outcome: accepted, clarification, or stop. For accepted, populate only fields supported by the current question. For clarification, ask one concise ordinary-language question and leave the patch empty. For stop, provide the category, reason, and immediate action and leave the patch empty. Do not choose workflow progression. Do not infer unsupported facts. Treat an active clarification as the question being answered.",
+      },
+      {
+        role: "user",
+        content: JSON.stringify({
+          workflow_step: input.state.step,
+          active_question: input.question,
+          answer: input.answer,
+          confirmed_record: input.record,
+        }),
+      },
+    ],
+    text: {
+      format: zodTextFormat(InterpretationSchema, "matter_opening_interpretation"),
+    },
   });
-  throw new Error(
-    "The AI interpretation service could not process this response. Please try again.",
-    { cause: lastError },
-  );
+
+  if (!response.output_parsed) {
+    throw new Error("The Estate Coordinator could not interpret that response.");
+  }
+  return response.output_parsed;
+}
+
+export async function interpretPlanningSummaryCorrection(input: {
+  correction: string;
+  activeQuestion: string | null;
+  record: MatterOpeningRecord;
+}): Promise<PlanningSummaryCorrection> {
+  if (syntheticModeEnabled()) return interpretSyntheticCorrection(input);
+
+  const response = await client().responses.parse({
+    model: MODEL,
+    input: [
+      {
+        role: "system",
+        content:
+          "Apply one constrained correction to the principal-facing Planning Summary baseline. Return accepted only when the correction is clear and supported. Populate only the baseline fields necessary for that correction and preserve every other field. Return clarification with one concise ordinary-language question when the requested change is ambiguous. Do not set system classification, routing, confirmation, or workflow fields.",
+      },
+      {
+        role: "user",
+        content: JSON.stringify({
+          active_clarification: input.activeQuestion,
+          requested_correction: input.correction,
+          confirmed_record: input.record,
+        }),
+      },
+    ],
+    text: {
+      format: zodTextFormat(
+        PlanningSummaryCorrectionSchema,
+        "planning_summary_correction",
+      ),
+    },
+  });
+
+  if (!response.output_parsed) {
+    throw new Error("The Estate Coordinator could not interpret that correction.");
+  }
+  return response.output_parsed;
 }

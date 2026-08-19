@@ -165,8 +165,8 @@ export function HomeExperience() {
                 <article className="matter-card" key={matter.id}>
                   <div>
                     <span className={`status-pill status-${matter.status}`}>
-                      {matter.status === "opening_confirmed"
-                        ? "Planning summary confirmed"
+                      {matter.status === "blueprint_ready"
+                        ? "Ready for Estate Blueprint"
                         : matter.status === "stopped"
                           ? "Professional follow-up required"
                           : "In progress"}
@@ -190,7 +190,7 @@ export function HomeExperience() {
                     </div>
                     <Link className="button button-secondary" href={`/matter/${matter.id}`}>
                       {matter.openingConfirmedAt
-                        ? "View planning summary"
+                        ? "View confirmed planning baseline"
                         : "Resume conversation"}
                     </Link>
                   </div>

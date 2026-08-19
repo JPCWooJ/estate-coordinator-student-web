@@ -1,27 +1,19 @@
 begin;
 
-insert into public.matters (
-  id, owner_id, name, status, workflow_version, current_stage, current_step, progress
-) values
+insert into public.matters (id, owner_id, name, status, workflow_version) values
   (
     'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
     '11111111-1111-4111-8111-111111111111',
     'Synthetic User A Matter',
     'matter_opening',
-    'EC_MATTER_OPENING_0.1',
-    'matter_opening',
-    'MO01_OUTCOMES',
-    12
+    'EC_MATTER_OPENING_0.3'
   ),
   (
     'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',
     '22222222-2222-4222-8222-222222222222',
     'Synthetic User B Matter',
     'matter_opening',
-    'EC_MATTER_OPENING_0.1',
-    'matter_opening',
-    'MO01_OUTCOMES',
-    12
+    'EC_MATTER_OPENING_0.3'
   );
 
 insert into public.matter_openings (matter_id, owner_id, record, workflow_state)
@@ -30,13 +22,13 @@ values
     'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
     '11111111-1111-4111-8111-111111111111',
     '{}'::jsonb,
-    '{"step":"MO01_OUTCOMES"}'::jsonb
+    '{"step":"MO01_OUTCOMES","clarification":null,"stop":null}'::jsonb
   ),
   (
     'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',
     '22222222-2222-4222-8222-222222222222',
     '{}'::jsonb,
-    '{"step":"MO01_OUTCOMES"}'::jsonb
+    '{"step":"MO01_OUTCOMES","clarification":null,"stop":null}'::jsonb
   );
 
 select set_config(

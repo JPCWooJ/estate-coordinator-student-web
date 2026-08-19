@@ -18,10 +18,12 @@ export default defineConfig({
     { name: "mobile-chromium", use: { ...devices["Pixel 7"] } },
   ],
   webServer: {
-    command: "npm run start -- --hostname 127.0.0.1 --port 3100",
+    command:
+      "node node_modules/next/dist/bin/next start --hostname 127.0.0.1 --port 3100",
     url: "http://127.0.0.1:3100",
-    reuseExistingServer: true,
+    reuseExistingServer: false,
     timeout: 120_000,
+    gracefulShutdown: { signal: "SIGINT", timeout: 5_000 },
     env: {
       ...process.env,
       EC_SYNTHETIC_TEST_MODE: "true",
