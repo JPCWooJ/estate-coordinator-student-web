@@ -153,7 +153,6 @@ export const OpeningStepSchema = z.enum([
   "MO05_FOOTPRINT",
   "MO05_COMPLEXITIES",
   "MO06_CONTACTS",
-  "MO06_CONTACTS_MORE",
   "MO08_HOUSE_IN_ORDER",
   "MO08_CONFIRM",
   "STOPPED",

@@ -137,7 +137,7 @@ export function MatterExperience({ matterId }: { matterId: string }) {
     !isConfirmed &&
     lastAssistantMessage?.role === "assistant" &&
     lastAssistantMessage.step === matter.workflowState.step &&
-    lastAssistantMessage.content.trim().startsWith("Please");
+    !lastAssistantMessage.content.includes("\n\n");
   const isStartingInterview =
     !isReview &&
     !isStopped &&
@@ -146,8 +146,9 @@ export function MatterExperience({ matterId }: { matterId: string }) {
     !interviewStarted;
   const hideLastAssistant =
     !isConfirmed &&
+    !isReview &&
     lastAssistantMessage?.role === "assistant" &&
-    !isClarificationMessage;
+    lastAssistantMessage.step === matter.workflowState.step;
   const visibleMessages = hideLastAssistant
     ? matter.messages.slice(0, -1)
     : matter.messages;

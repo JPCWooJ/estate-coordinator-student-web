@@ -143,12 +143,43 @@ function parseContact(text: string) {
   };
 }
 
-function participantFromText(text: string) {
+function parsePeopleWhoHelp(text: string) {
+  const entries = text.split(/[;\n]/).map((value) => value.trim()).filter(Boolean);
+  const contacts: NonNullable<Interpretation["patch"]["professional_and_family_contacts"]> = [];
+  const participants: NonNullable<Interpretation["patch"]["other_participants"]> = [];
+
+  for (const entry of entries) {
+    if (/contact needed|no contact|none/i.test(entry)) {
+      return { contacts: null, participants, missing: ["CONTACT_NEEDED"], invalid: false };
+    }
+
+    if (entry.includes("|")) {
+      const contact = parseContact(entry);
+      if (!contact) {
+        return {
+          contacts: null,
+          participants,
+          missing: [],
+          invalid: true,
+        };
+      }
+      contacts.push(contact);
+      continue;
+    }
+
+    participants.push({
+      name: entry,
+      relationship: "principal-provided",
+      intended_role: "participate in the estate-planning process",
+      involvement_timing: "principal-provided",
+    });
+  }
+
   return {
-    name: text,
-    relationship: "principal-provided",
-    intended_role: "help with the estate-planning process",
-    involvement_timing: "principal-provided",
+    contacts,
+    participants,
+    missing: [],
+    invalid: false,
   };
 }
 
@@ -289,33 +320,36 @@ export function interpretSyntheticTurn(
         ? ["not applicable"]
         : text.split(/[;\n]/).map((value) => value.trim()).filter(Boolean);
       break;
-    case "MO06_CONTACTS":
-    case "MO06_CONTACTS_MORE": {
-      if (/no (more|contact)|ready to continue|contact(?: is)? needed|none/i.test(lower)) {
-        result.signals.contacts_complete = true;
-        if (/contact(?: is)? needed|no contact|none/i.test(lower)) {
-          result.patch.missing_contacts = ["CONTACT_NEEDED"];
-        }
+    case "MO06_CONTACTS": {
+      const parsed = parsePeopleWhoHelp(text);
+      if (parsed.invalid) {
+        result.accepted = false;
+        result.needs_clarification = true;
+        result.clarification_question =
+          "Please provide each contact as name | firm | expertise | estate role | email | phone | contact trigger | primary or backup, or include only people you want to participate.";
         break;
       }
-
-      const contact = parseContact(text);
-      if (contact) {
-        result.patch.professional_and_family_contacts = [contact];
-        result.signals.contacts_complete = false;
-        break;
-      }
-
-      if (/participat|involved|assistant|family member|trusted family|spouse|children/i.test(lower)) {
-        result.patch.other_participants = [participantFromText(text)];
+      if (parsed.missing.length > 0) {
+        result.patch.missing_contacts = parsed.missing;
         result.signals.contacts_complete = true;
         break;
       }
-
-      result.accepted = false;
-      result.needs_clarification = true;
-      result.clarification_question =
-        "Please name a person who should help, provide a professional contact, or say you are ready to continue.";
+      if (parsed.contacts && parsed.contacts.length > 0) {
+        result.patch.professional_and_family_contacts = parsed.contacts;
+      }
+      if (parsed.participants.length > 0) {
+        result.patch.other_participants = parsed.participants;
+      }
+      result.signals.contacts_complete =
+        parsed.contacts?.some((contact) => contact.missing_information.length > 0) === false;
+      if (!result.signals.contacts_complete) {
+        result.acknowledgement =
+          "That contact is captured, but I am still missing some information.";
+        result.accepted = false;
+        result.needs_clarification = true;
+        result.clarification_question =
+          "Please provide a complete contact line for the person including name, firm, expertise, estate role, email, phone, and when to contact them.";
+      }
       break;
     }
     case "MO08_HOUSE_IN_ORDER":

@@ -15,6 +15,7 @@ import {
   prepareMatterOpeningForConfirmation,
 } from "./workflow";
 import { buildPlanningSummaryPdf } from "../server/planning-summary-pdf";
+import { buildPrincipalPlanningSummary } from "./planning-summary";
 
 function interpretation(
   step: OpeningStep,
@@ -170,29 +171,23 @@ describe("Matter Opening deterministic workflow", () => {
     const planDetails = advance(
       existingPlan.record,
       existingPlan.state,
-      interpretation(
-        "MO03_PLAN_DETAILS",
-        {
-          current_plan_snapshot: "Synthetic will and trust completed in 2020.",
-        },
-        { current_plan_exists: true },
-      ),
+      interpretation("MO03_PLAN_DETAILS", {
+        current_plan_snapshot: "Synthetic will and trust completed in 2020.",
+      }, { current_plan_exists: true }),
     );
     expect(planDetails.state.step).toBe("MO03_CHANGES");
 
     const changes = advance(
       planDetails.record,
       planDetails.state,
-      interpretation(
-        "MO03_CHANGES",
-        { changes_since_current_plan: ["Synthetic relocation"] },
-        { current_plan_exists: true },
-      ),
+      interpretation("MO03_CHANGES", {
+        changes_since_current_plan: ["Synthetic relocation"],
+      }, { current_plan_exists: true }),
     );
     expect(changes.state.step).toBe("MO04_TIMING");
   });
 
-  it("runs triggered people follow-ups and consolidates contacts and participants into MO-06", () => {
+  it("runs the people and contact branches with single-step contacts", () => {
     const record = createInitialRecord("aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa");
     const peopleState = {
       ...createInitialWorkflowState(),
@@ -228,45 +223,28 @@ describe("Matter Opening deterministic workflow", () => {
     const contact = advance(
       record,
       contactState,
-      interpretation("MO06_CONTACTS", {
-        professional_and_family_contacts: [
-          {
-            name: "Synthetic Attorney",
-            firm: "Example Firm",
-            expertise: "estate planning",
-            estate_role: "planning counsel",
-            email: "unknown",
-            telephone: "unknown",
-            contact_trigger: "planning update",
-            priority: "primary",
-            missing_information: ["email", "telephone"],
-          },
-        ],
-      }),
-    );
-    expect(contact.state.step).toBe("MO06_CONTACTS_MORE");
-    expect(contact.record.professional_and_family_contacts).toHaveLength(1);
-
-    const complete = advance(
-      contact.record,
-      contact.state,
       interpretation(
-        "MO06_CONTACTS_MORE",
+        "MO06_CONTACTS",
         {
-          other_participants: [
+          professional_and_family_contacts: [
             {
-              name: "Synthetic Spouse",
-              relationship: "spouse",
-              intended_role: "planning participant",
-              involvement_timing: "now",
+              name: "Synthetic Attorney",
+              firm: "Example Firm",
+              expertise: "estate planning",
+              estate_role: "planning counsel",
+              email: "attorney@example.com",
+              telephone: "555-555-1212",
+              contact_trigger: "planning update",
+              priority: "primary",
+              missing_information: [],
             },
           ],
         },
         { contacts_complete: true },
       ),
     );
-    expect(complete.state.step).toBe("MO08_HOUSE_IN_ORDER");
-    expect(complete.record.other_participants).toHaveLength(1);
+    expect(contact.state.step).toBe("MO08_HOUSE_IN_ORDER");
+    expect(contact.record.professional_and_family_contacts).toHaveLength(1);
   });
 
   it("stops the affected lane for an expedited or mandatory-stop event", () => {
@@ -341,8 +319,7 @@ describe("Matter Opening deterministic workflow", () => {
     expect(result.record.confirmation_date).toBe("2026-08-17T20:00:00.000Z");
   });
 
-  it("creates a paginated principal-facing planning summary PDF without internal routing fields", () => {
-    const longContext = Array.from({ length: 180 }, (_, index) => `planning detail ${index + 1}`).join(" ");
+  it("creates a planning summary PDF for confirmed Matter Opening records", () => {
     const record = prepareMatterOpeningForConfirmation({
       ...createInitialRecord("aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"),
       desired_outcomes: ["intended_transfer", "tax_minimization", "incapacity_readiness"],
@@ -352,7 +329,7 @@ describe("Matter Opening deterministic workflow", () => {
         "tax_minimization",
       ],
       principal_definition_of_success: "Protect the family and keep outcomes practical.",
-      people_and_interests_snapshot: longContext,
+      people_and_interests_snapshot: "Spouse and adult children.",
       current_plan_snapshot: "No existing plan.",
       changes_since_current_plan: ["none"],
       timing_event_or_deadline: {
@@ -361,19 +338,159 @@ describe("Matter Opening deterministic workflow", () => {
         date: "2026-12-01",
         importance: "high",
       },
-      geographic_and_complexity_flags: ["Florida property", "two rental units"],
-      professional_and_family_contacts: [],
-      other_participants: [],
-      house_in_order_concern: "A clear confirmation that the plan is current.",
+      selected_discovery_path: "implementation and plan-alignment verification",
+      single_next_action:
+        "Open Your Estate Blueprint and move into planning recommendations and profile review.",
+      house_in_order_concern:
+        "Need to verify whether my current documents still match my assets and priorities.",
+      geographic_and_complexity_flags: [
+        "Florida property",
+        ...Array.from({ length: 120 }, (_, index) => `Complexity note ${index + 1}`),
+      ],
+      professional_and_family_contacts: [
+        {
+          name: "Jordan Lee",
+          firm: "Harbor Counsel",
+          expertise: "Estate planning",
+          estate_role: "Planning counsel",
+          email: "jordan@harborcounsel.com",
+          telephone: "555-555-1111",
+          contact_trigger: "planning update",
+          priority: "primary",
+          missing_information: [],
+        },
+      ],
+      other_participants: [
+        {
+          name: "Spouse",
+          relationship: "family",
+          intended_role: "participate",
+          involvement_timing: "initial planning",
+        },
+      ],
     });
 
     const pdf = buildPlanningSummaryPdf(record);
-    const text = pdf.toString("latin1");
+    const text = pdf.toString("utf8");
 
     expect(pdf.subarray(0, 5).toString()).toBe("%PDF-");
     expect(text).toContain("Estate Planning Summary");
-    expect((text.match(/\/Type \/Page\b/g) ?? []).length).toBeGreaterThan(1);
-    expect(text).not.toContain(record.selected_discovery_path);
-    expect(text).not.toContain(record.matter_classification);
+    expect(text).toContain("/Type /Pages");
+    expect(text).toContain("/Count");
+    expect(text).toContain("People who should help");
+    expect(text).not.toContain("implementation and plan-alignment verification");
+    expect(text).not.toContain(
+      "Open Your Estate Blueprint and move into planning recommendations and profile review.",
+    );
+    expect(text).not.toContain("house in order");
+    expect(text).toContain("%%EOF");
+    const pagesMatch = text.match(/\/Count (\d+)/);
+    expect(pagesMatch).not.toBeNull();
+    if (!pagesMatch) return;
+    expect(Number.parseInt(pagesMatch[1], 10)).toBeGreaterThanOrEqual(2);
+  });
+
+  it("uses the shared principal-facing Planning Summary projection in the PDF output", () => {
+    const record = prepareMatterOpeningForConfirmation({
+      ...createInitialRecord("aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"),
+      desired_outcomes: [
+        "intended_transfer",
+        "tax_minimization",
+        "incapacity_readiness",
+      ],
+      top_three_priorities: [
+        "intended_transfer",
+        "incapacity_readiness",
+        "tax_minimization",
+      ],
+      principal_definition_of_success:
+        "Protect the family and maintain flexibility.",
+      people_and_interests_snapshot: "Spouse and adult children.",
+      current_plan_snapshot: "Living trust and will drafted in 2022.",
+      current_plan_status: "update_needed",
+      changes_since_current_plan: [
+        "Renovated estate plan documents in 2022",
+      ],
+      timing_event_or_deadline: {
+        reason: "Family needs coordination after a move.",
+        event: "Potential relocation discussion.",
+        date: "2026-12-01",
+        importance: "medium",
+      },
+      selected_discovery_path: "implementation and plan-alignment verification",
+      single_next_action:
+        "Open the Estate Blueprint and make a practical first edit pass.",
+      house_in_order_concern: "Needs confirmation of beneficiary details.",
+      geographic_and_complexity_flags: ["Florida property", "Digital assets"],
+      professional_and_family_contacts: [
+        {
+          name: "Jordan Lee",
+          firm: "Harbor Counsel",
+          expertise: "Estate planning",
+          estate_role: "Planning counsel",
+          email: "jordan@harborcounsel.com",
+          telephone: "555-555-1111",
+          contact_trigger: "planning update",
+          priority: "primary",
+          missing_information: [],
+        },
+      ],
+      other_participants: [
+        {
+          name: "Spouse",
+          relationship: "family",
+          intended_role: "participate",
+          involvement_timing: "initial planning",
+        },
+      ],
+    });
+    const summary = buildPrincipalPlanningSummary(record);
+    const pdf = buildPlanningSummaryPdf(record).toString("utf8");
+
+    for (const item of summary.desiredOutcomes) {
+      expect(pdf).toContain(item);
+    }
+    expect(pdf).toContain(summary.successDefinition);
+    expect(pdf).toContain(summary.currentPlanStatus);
+    expect(pdf).toContain(summary.currentPlanSnapshot);
+    for (const change of summary.knownChanges) {
+      expect(pdf).toContain(change);
+    }
+    expect(pdf).toContain(summary.timing.reason);
+    expect(pdf).toContain("After confirming this summary");
+    expect(pdf).toContain("build recommendations.");
+    expect(pdf).not.toContain("house in order");
+    expect(pdf).not.toContain(record.house_in_order_concern);
+    expect(pdf).not.toContain(record.selected_discovery_path);
+    expect(pdf).not.toContain(record.single_next_action);
+  });
+
+  it("returns clarification as the next question without advancing", () => {
+    const record = createInitialRecord("aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa");
+    const state = { ...createInitialWorkflowState(), step: "MO01_PRIORITIES" as const };
+    const clarification = interpretation("MO01_PRIORITIES");
+    clarification.accepted = false;
+    clarification.needs_clarification = true;
+    clarification.clarification_question = "Please identify all three priorities.";
+    const result = advance(record, state, clarification);
+    expect(result.state.step).toBe("MO01_PRIORITIES");
+    expect(result.record).toBe(record);
+    expect(result.assistantMessage).toContain("Please identify all three priorities.");
+
+    const followUp = interpretation("MO01_PRIORITIES", {
+      top_three_priorities: [
+        "intended_transfer",
+        "incapacity_readiness",
+        "tax_minimization",
+      ],
+    });
+    const recovered = advance(record, result.state, followUp);
+    expect(recovered.state.step).toBe("MO01_GOAL_FOLLOWUP");
+    expect(recovered.record.top_three_priorities).toEqual([
+      "intended_transfer",
+      "incapacity_readiness",
+      "tax_minimization",
+    ]);
   });
 });
+

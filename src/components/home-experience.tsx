@@ -101,12 +101,12 @@ export function HomeExperience() {
                 priorities, people, timeline, and planning context before Blueprint
                 recommendations begin.
               </p>
-              <p>This is not legal, tax, or investment advice.</p>
-              <ul>
-                <li>
-                  Use representative planning context and avoid sensitive personal
-                  facts unless the controlled-beta policy explicitly approves them.
-                </li>
+                <p>This is not legal, tax, or investment advice.</p>
+                <ul>
+                  <li>
+                    Use representative planning context and avoid sensitive personal
+                    facts unless the controlled-beta policy explicitly approves them.
+                  </li>
                 <li>
                   Do not enter passwords, private keys, seed phrases, or full
                   account identifiers.
@@ -115,8 +115,8 @@ export function HomeExperience() {
                   Existing estate-planning documents are not reviewed in this phase.
                 </li>
                 <li>
-                  Your submitted answers are saved so you can resume the controlled
-                  beta later.
+                  Your saved planning information is retained under the cohort
+                  privacy controls.
                 </li>
               </ul>
             </div>

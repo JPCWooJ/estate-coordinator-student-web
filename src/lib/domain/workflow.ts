@@ -91,9 +91,7 @@ export function getCanonicalQuestion(
     case "MO05_COMPLEXITIES":
       return "Are there any trusts, businesses, foreign connections, digital assets, major charitable plans, or other complexities you already know should be considered?";
     case "MO06_CONTACTS":
-      return "Who should be involved or available to help with your estate plan now or in the future? This might include attorneys, tax or financial professionals, assistants, trusted family members, or anyone else who should know what to do.";
-    case "MO06_CONTACTS_MORE":
-      return "Is there another person or professional to add, or are you ready to continue?";
+      return "Who should be involved or available to help with your estate plan now or in the future? This can include attorneys, tax or financial professionals, assistants, trusted family members, or anyone else who should know what to do.";
     case "MO08_HOUSE_IN_ORDER":
       return "What would you need to see, understand, or have confirmed to feel confident your plan is complete, current, and working as intended?";
     case "MO08_CONFIRM":
@@ -128,7 +126,7 @@ export function getProgress(step: OpeningStep): number {
   if (step.startsWith("MO03")) return 38;
   if (step === "MO04_TIMING") return 50;
   if (step.startsWith("MO05")) return 62;
-  if (step.startsWith("MO06")) return 82;
+  if (step.startsWith("MO06")) return 75;
   if (step.startsWith("MO08")) return 95;
   if (step === "CONFIRMED") return 100;
   return 50;
@@ -231,10 +229,7 @@ function applyPatchForStep(
       next.geographic_and_complexity_flags,
       patch.geographic_and_complexity_flags,
     );
-  } else if (
-    state.step === "MO06_CONTACTS" ||
-    state.step === "MO06_CONTACTS_MORE"
-  ) {
+  } else if (state.step === "MO06_CONTACTS") {
     if (patch.professional_and_family_contacts) {
       next.professional_and_family_contacts = [
         ...next.professional_and_family_contacts,
@@ -246,10 +241,7 @@ function applyPatchForStep(
       patch.missing_contacts,
     );
     if (patch.other_participants) {
-      next.other_participants = [
-        ...next.other_participants,
-        ...patch.other_participants,
-      ];
+      next.other_participants = patch.other_participants;
     }
   } else if (state.step === "MO08_HOUSE_IN_ORDER") {
     if (patch.house_in_order_concern) {
@@ -366,10 +358,9 @@ function nextState(
       next.step = "MO06_CONTACTS";
       break;
     case "MO06_CONTACTS":
-    case "MO06_CONTACTS_MORE":
       next.step = interpretation.signals.contacts_complete
         ? "MO08_HOUSE_IN_ORDER"
-        : "MO06_CONTACTS_MORE";
+        : "MO06_CONTACTS";
       break;
     case "MO08_HOUSE_IN_ORDER":
       next.step = "MO08_CONFIRM";
@@ -390,10 +381,14 @@ export function applyAcceptedInterpretation(
   interpretation: Interpretation,
 ): WorkflowResult {
   if (!interpretation.accepted || interpretation.needs_clarification) {
-    throw new Error(
+    const clarification =
       interpretation.clarification_question ??
-        "The response needs clarification before it can be saved.",
-    );
+      "Please tell us which information is still missing.";
+    return {
+      record,
+      state,
+      assistantMessage: clarification,
+    };
   }
 
   const updatedRecord = applyPatchForStep(record, state, interpretation);
@@ -440,6 +435,7 @@ export function confirmOpening(
     record: updatedRecord,
     state: updatedState,
     assistantMessage:
-      "Your planning summary is confirmed and saved. Estate Blueprint is the next stage and will use the information you confirmed here.",
+      "Your planning summary is confirmed and saved. Next, you will begin Building your Estate Blueprint from what you confirmed here.",
   };
 }
+
