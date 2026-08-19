@@ -4,30 +4,41 @@ export const WORKFLOW_VERSION = "EC_MATTER_OPENING_0.3";
 
 export const OutcomeCodeSchema = z.enum([
   "intended_transfer",
-  "incapacity_readiness",
-  "beneficiary_protection",
   "tax_minimization",
-  "administration_simplicity",
-  "privacy",
-  "charitable_legacy",
-  "business_continuity",
-  "legacy",
+  "asset_protection",
+  "support_for_others",
+  "distribution_control",
+  "incapacity_readiness",
+  "conflict_prevention",
+  "heir_readiness",
+  "plan_alignment",
+  "house_in_order_assurance",
+  "business_charitable_family_legacy",
   "other",
 ]);
 export type OutcomeCode = z.infer<typeof OutcomeCodeSchema>;
 
 export const OUTCOME_LABELS: Record<OutcomeCode, string> = {
   intended_transfer: "Intended transfer",
-  incapacity_readiness: "Incapacity readiness",
-  beneficiary_protection: "Beneficiary protection",
   tax_minimization: "Tax minimization",
-  administration_simplicity: "Administration simplicity",
-  privacy: "Privacy",
-  charitable_legacy: "Charitable legacy",
-  business_continuity: "Business continuity",
-  legacy: "Legacy",
+  asset_protection: "Asset protection",
+  support_for_others: "Support for others",
+  distribution_control: "Distribution control",
+  incapacity_readiness: "Incapacity readiness",
+  conflict_prevention: "Conflict prevention",
+  heir_readiness: "Heir readiness",
+  plan_alignment: "Plan alignment",
+  house_in_order_assurance: "House-in-order assurance",
+  business_charitable_family_legacy: "Business, charitable, or family legacy",
   other: "Other",
 };
+
+export const MatterClassificationSchema = z.enum([
+  "NEW_PLAN",
+  "PLAN_REVIEW",
+  "PLAN_UPDATE",
+  "IMPLEMENTATION_ORGANIZATION",
+]);
 
 export const OpeningStepSchema = z.enum([
   "MO01_OUTCOMES",
@@ -89,7 +100,7 @@ export const MatterOpeningRecordSchema = z.object({
     "MANDATORY_STOP",
     "BLUEPRINT_READY",
   ]),
-  matter_classification: z.string(),
+  matter_classification: MatterClassificationSchema,
   desired_outcomes: z.array(OutcomeCodeSchema),
   top_three_priorities: z.array(OutcomeCodeSchema).max(3),
   principal_definition_of_success: z.string(),
@@ -217,7 +228,7 @@ export function createInitialRecord(matterId: string): MatterOpeningRecord {
     people_and_interests_snapshot: "unknown",
     people_circumstance_flags: [],
     current_plan_snapshot: "unknown",
-    current_plan_status: "unsure_what_exists",
+    current_plan_status: "unknown",
     changes_since_current_plan: [],
     timing_event_or_deadline: {
       reason: "unknown",

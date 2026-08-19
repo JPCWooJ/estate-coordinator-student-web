@@ -39,7 +39,7 @@ export async function interpretMatterOpeningAnswer(input: {
       {
         role: "system",
         content:
-          "You interpret one approved Estate Coordinator question. Return exactly one explicit outcome: accepted, clarification, or stop. For accepted, populate only fields supported by the current question. For clarification, ask one concise ordinary-language question and leave the patch empty. For stop, provide the category, reason, and immediate action and leave the patch empty. Do not choose workflow progression. Do not infer unsupported facts. Treat an active clarification as the question being answered.",
+          "You interpret one approved Estate Coordinator question. Return exactly one explicit outcome: accepted, clarification, or stop. For accepted, populate only fields supported by the current question. Accept unknown, not decided, and not applicable without forcing a different answer, preserving that answer in the supported field when applicable. For clarification, ask one concise ordinary-language question only when materially necessary and leave the patch empty. For stop, provide the category, reason, and immediate action and leave the patch empty. Do not choose workflow progression. Do not infer unsupported facts. Treat an active clarification as the question being answered.",
       },
       {
         role: "user",

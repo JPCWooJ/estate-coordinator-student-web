@@ -6,6 +6,7 @@ import {
   emptyInterpretationPatch,
   Interpretation,
   MatterOpeningRecord,
+  OutcomeCodeSchema,
   OpeningStep,
   PlanningSummaryCorrection,
   WorkflowState,
@@ -93,6 +94,23 @@ function confirmationReadyRecord(): MatterOpeningRecord {
 }
 
 describe("Matter Opening v0.3 workflow", () => {
+  it("uses the approved outcome taxonomy", () => {
+    expect(OutcomeCodeSchema.options).toEqual([
+      "intended_transfer",
+      "tax_minimization",
+      "asset_protection",
+      "support_for_others",
+      "distribution_control",
+      "incapacity_readiness",
+      "conflict_prevention",
+      "heir_readiness",
+      "plan_alignment",
+      "house_in_order_assurance",
+      "business_charitable_family_legacy",
+      "other",
+    ]);
+  });
+
   it("derives priority follow-ups from the record without queue state", () => {
     let record = createInitialRecord("aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa");
     let state = createInitialWorkflowState();
@@ -119,9 +137,13 @@ describe("Matter Opening v0.3 workflow", () => {
       clarification: null,
       stop: null,
     });
-    expect(getCanonicalQuestion(record, state)).toContain("intended transfer");
-
-    for (const outcome of record.top_three_priorities) {
+    const expectedQuestions = [
+      "Who or what do you most want to benefit, and what transfer outcome do you most want to prevent?",
+      "If you could not manage your affairs, what must continue without disruption?",
+      "If tax minimization requires tradeoffs, how would you balance it against simplicity, flexibility, access, and control?",
+    ];
+    for (const [index, outcome] of record.top_three_priorities.entries()) {
+      expect(getCanonicalQuestion(record, state)).toBe(expectedQuestions[index]);
       ({ record, state } = advance(
         record,
         state,
@@ -169,7 +191,15 @@ describe("Matter Opening v0.3 workflow", () => {
     expect(recovered.state.clarification).toBeNull();
   });
 
-  it("uses current-plan status to own deterministic branch progression", () => {
+  it.each([
+    ["no_existing_plan", "NEW_PLAN"],
+    ["unsure_what_exists", "PLAN_REVIEW"],
+    ["review_requested", "PLAN_REVIEW"],
+    ["current", "PLAN_REVIEW"],
+    ["update_needed", "PLAN_UPDATE"],
+    ["implementation_or_organization_needed", "IMPLEMENTATION_ORGANIZATION"],
+    ["unknown", "PLAN_REVIEW"],
+  ] as const)("classifies %s with the approved provisional value", (status, classification) => {
     const record = createInitialRecord("aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa");
     const state = {
       ...createInitialWorkflowState(),
@@ -179,12 +209,11 @@ describe("Matter Opening v0.3 workflow", () => {
       record,
       state,
       accepted({
-        current_plan_status: "update_needed",
+        current_plan_status: status,
         current_plan_snapshot: "A living trust and will from 2018.",
       }),
     );
-    expect(result.state.step).toBe("MO03_PLAN_DETAILS");
-    expect(result.record.matter_classification).toBe("PLAN_UPDATE");
+    expect(result.record.matter_classification).toBe(classification);
   });
 
   it("applies one constrained Planning Summary correction and clears clarification", () => {
@@ -223,6 +252,14 @@ describe("Matter Opening v0.3 workflow", () => {
     expect(summary.complexityFlags).toContain("Georgia rental");
     expect(summary.contacts[0]?.name).toBe("Jordan Lee");
     expect(summary.participants).toContain("Spouse");
+    expect(summary.topPriorities).toEqual([
+      "Intended transfer",
+      "Incapacity readiness",
+      "Tax minimization",
+    ]);
+    expect(summary.topPriorities.every((priority) => !/^\d+\./.test(priority))).toBe(
+      true,
+    );
     expect(summary.recommendedNextStep).toContain("Estate Blueprint");
     expect(serialized).not.toContain("PLAN_UPDATE");
     expect(serialized).not.toContain("house_in_order");
@@ -241,4 +278,30 @@ describe("Matter Opening v0.3 workflow", () => {
     expect(result.record.principal_confirmed).toBe("yes");
     expect(result.record.confirmation_date).toBe("2026-08-19T12:00:00.000Z");
   });
+
+  it.each(["unknown", "not decided", "not applicable"])(
+    "allows the permitted '%s' response through confirmation",
+    (permittedAnswer) => {
+      const record: MatterOpeningRecord = {
+        ...confirmationReadyRecord(),
+        matter_classification: "PLAN_REVIEW",
+        principal_definition_of_success: permittedAnswer,
+        people_and_interests_snapshot: permittedAnswer,
+        current_plan_status: "unknown",
+        current_plan_snapshot: permittedAnswer,
+        timing_event_or_deadline: {
+          reason: permittedAnswer,
+          event: permittedAnswer,
+          date: permittedAnswer,
+          importance: permittedAnswer,
+        },
+      };
+      const result = confirmOpening(
+        record,
+        { step: "MO08_CONFIRM", clarification: null, stop: null },
+        "2026-08-19T12:00:00.000Z",
+      );
+      expect(result.state.step).toBe("BLUEPRINT_READY");
+    },
+  );
 });

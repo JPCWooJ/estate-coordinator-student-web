@@ -126,6 +126,16 @@ test("continuous priorities-to-Blueprint handoff saves, clarifies, corrects, and
   await answer(page, "None identified.");
 
   await expect(page.getByRole("heading", { name: "Planning Summary" })).toBeVisible();
+  const priorityItems = page
+    .getByLabel("Planning Summary")
+    .locator("section")
+    .filter({ has: page.getByRole("heading", { name: "Top three priorities" }) })
+    .locator("ol > li");
+  await expect(priorityItems).toHaveText([
+    "Intended transfer",
+    "Incapacity readiness",
+    "Tax minimization",
+  ]);
   await expect(page.getByText("Jordan Lee").first()).toBeVisible();
   await expect(page.getByText("Known planning changes")).toBeVisible();
   await expect(

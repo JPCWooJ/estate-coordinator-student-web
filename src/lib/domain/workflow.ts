@@ -3,10 +3,35 @@ import {
   InterpretationPatch,
   MatterOpeningRecord,
   OpeningStep,
-  OUTCOME_LABELS,
+  OutcomeCode,
   PlanningSummaryCorrection,
   WorkflowState,
 } from "./matter-opening";
+
+const OUTCOME_FOLLOWUP_QUESTIONS: Record<OutcomeCode, string> = {
+  intended_transfer:
+    "Who or what do you most want to benefit, and what transfer outcome do you most want to prevent?",
+  tax_minimization:
+    "If tax minimization requires tradeoffs, how would you balance it against simplicity, flexibility, access, and control?",
+  asset_protection:
+    "Which risks concern you most - creditors, divorce, litigation, financial immaturity, outside influence, or something else?",
+  support_for_others:
+    "Who may need continuing financial support, care, management, or oversight?",
+  distribution_control:
+    "Are there circumstances in which a beneficiary should not receive assets outright or immediately?",
+  incapacity_readiness:
+    "If you could not manage your affairs, what must continue without disruption?",
+  conflict_prevention:
+    "Where do you foresee disagreement, interference, delay, or confusion?",
+  heir_readiness: "What should your heirs know or be able to find immediately?",
+  plan_alignment:
+    "What are you least certain is coordinated correctly - documents, ownership, beneficiaries, trusts, or instructions?",
+  house_in_order_assurance:
+    "What evidence would give you confidence that the plan is complete, implemented, and current?",
+  business_charitable_family_legacy:
+    "What should continue or be preserved beyond the transfer of money?",
+  other: "What would success look like in practical terms?",
+};
 
 const STEP_LABELS: Record<OpeningStep, string> = {
   MO01_OUTCOMES: "Your estate-planning priorities",
@@ -75,7 +100,7 @@ export function getCanonicalQuestion(
     case "MO01_GOAL_FOLLOWUP": {
       const priority = nextPriority(record);
       return priority
-        ? `For ${OUTCOME_LABELS[priority].toLowerCase()}, what would a good result look like?`
+        ? OUTCOME_FOLLOWUP_QUESTIONS[priority]
         : "What would a successful estate plan look like to you?";
     }
     case "MO02_PEOPLE":
@@ -107,10 +132,15 @@ export function getCanonicalQuestion(
   }
 }
 
-function classificationFor(status: MatterOpeningRecord["current_plan_status"]) {
+function classificationFor(
+  status: MatterOpeningRecord["current_plan_status"],
+): MatterOpeningRecord["matter_classification"] {
   if (status === "no_existing_plan") return "NEW_PLAN";
-  if (status === "current" || status === "update_needed") return "PLAN_UPDATE";
-  return "UNCLASSIFIED";
+  if (status === "update_needed") return "PLAN_UPDATE";
+  if (status === "implementation_or_organization_needed") {
+    return "IMPLEMENTATION_ORGANIZATION";
+  }
+  return "PLAN_REVIEW";
 }
 
 function replacePriorityDetail(
@@ -237,7 +267,7 @@ function nextStep(record: MatterOpeningRecord, step: OpeningStep): OpeningStep {
         ? "MO01_GOAL_FOLLOWUP"
         : "MO01_PRIORITIES";
     case "MO01_PRIORITIES":
-      return "MO01_GOAL_FOLLOWUP";
+      return nextPriority(record) ? "MO01_GOAL_FOLLOWUP" : "MO02_PEOPLE";
     case "MO01_GOAL_FOLLOWUP":
       return nextPriority(record) ? "MO01_GOAL_FOLLOWUP" : "MO02_PEOPLE";
     case "MO02_PEOPLE":
@@ -395,28 +425,12 @@ export function applyPlanningSummaryCorrection(
   };
 }
 
-function exitGateSatisfied(record: MatterOpeningRecord) {
-  return (
-    record.desired_outcomes.length > 0 &&
-    record.top_three_priorities.length === 3 &&
-    record.top_three_priorities.every((priority) =>
-      record.priority_details.some((detail) => detail.outcome === priority),
-    ) &&
-    record.principal_definition_of_success !== "unknown" &&
-    record.people_and_interests_snapshot !== "unknown" &&
-    record.current_plan_status !== "unknown" &&
-    record.current_plan_status !== "unsure_what_exists" &&
-    record.current_plan_snapshot !== "unknown" &&
-    record.timing_event_or_deadline.reason !== "unknown"
-  );
-}
-
 export function confirmOpening(
   record: MatterOpeningRecord,
   state: WorkflowState,
   confirmedAt = new Date().toISOString(),
 ) {
-  if (state.step !== "MO08_CONFIRM" || !exitGateSatisfied(record)) {
+  if (state.step !== "MO08_CONFIRM") {
     throw new Error("The Planning Summary confirmation gate is not complete.");
   }
   return {

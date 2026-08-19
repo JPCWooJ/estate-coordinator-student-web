@@ -67,7 +67,7 @@ export function buildPrincipalPlanningSummary(
   return {
     desiredOutcomes: record.desired_outcomes.map((outcome) => OUTCOME_LABELS[outcome]),
     topPriorities: record.top_three_priorities.map(
-      (outcome, index) => `${index + 1}. ${OUTCOME_LABELS[outcome]}`,
+      (outcome) => OUTCOME_LABELS[outcome],
     ),
     successDefinition: valueOrUnknown(record.principal_definition_of_success),
     priorityContext: formatPriorityContext(record),

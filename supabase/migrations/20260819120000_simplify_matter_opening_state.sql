@@ -1,29 +1,6 @@
-update public.matter_openings
-set record = (record - 'selected_discovery_path' - 'single_next_action') ||
-    jsonb_build_object(
-      'matter_status',
-      case
-        when workflow_state->>'step' = 'CONFIRMED' then 'BLUEPRINT_READY'
-        else coalesce(record->>'matter_status', 'OPEN')
-      end
-    ),
-    workflow_state =
-      (workflow_state - 'goal_followup_queue' - 'active_goal_followup' - 'accepted_turns') ||
-      jsonb_build_object(
-        'step',
-        case
-          when workflow_state->>'step' = 'CONFIRMED' then 'BLUEPRINT_READY'
-          else workflow_state->>'step'
-        end,
-        'clarification', null
-      ),
-    updated_at = now();
+delete from public.matters;
 
 alter table public.matters drop constraint matters_status_check;
-update public.matters
-set status = case when status = 'opening_confirmed' then 'blueprint_ready' else status end,
-    workflow_version = 'EC_MATTER_OPENING_0.3',
-    updated_at = now();
 alter table public.matters
   add constraint matters_status_check
   check (status in ('matter_opening', 'stopped', 'blueprint_ready'));
@@ -190,10 +167,11 @@ as $$
 declare
   v_owner uuid;
   v_state jsonb;
+  v_prior_record jsonb;
   v_revision integer;
 begin
-  select m.owner_id, o.workflow_state
-    into v_owner, v_state
+  select m.owner_id, o.workflow_state, o.record, o.revision + 1
+    into v_owner, v_state, v_prior_record, v_revision
     from public.matters m
     join public.matter_openings o on o.matter_id = m.id
     where m.id = p_matter_id
@@ -213,12 +191,10 @@ begin
   end if;
 
   if p_record_changed then
-    select revision + 1 into v_revision
-      from public.matter_openings where matter_id = p_matter_id;
     insert into public.matter_opening_revisions (
       matter_id, owner_id, revision, record, reason
     ) values (
-      p_matter_id, p_owner_id, v_revision, p_record, 'principal correction'
+      p_matter_id, p_owner_id, v_revision, v_prior_record, 'principal correction'
     );
   end if;
 
