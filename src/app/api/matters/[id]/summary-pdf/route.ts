@@ -3,14 +3,13 @@ import { NextResponse } from "next/server";
 import { getCurrentUser } from "@/lib/server/auth";
 import { buildPlanningSummaryPdf } from "@/lib/server/planning-summary-pdf";
 import { getMatter } from "@/lib/server/data";
-import { assertSameOrigin, errorResponse } from "@/lib/server/http";
+import { errorResponse } from "@/lib/server/http";
 
 export async function GET(
-  request: Request,
+  _request: Request,
   context: { params: Promise<{ id: string }> },
 ) {
   try {
-    assertSameOrigin(request);
     const user = await getCurrentUser();
     if (!user) throw new Error("Unauthorized.");
     const { id } = await context.params;
@@ -29,10 +28,10 @@ export async function GET(
       headers: {
         "Content-Type": "application/pdf",
         "Content-Disposition": 'attachment; filename="planning-summary.pdf"',
+        "Cache-Control": "private, no-store",
       },
     });
   } catch (error) {
     return errorResponse(error);
   }
 }
-
