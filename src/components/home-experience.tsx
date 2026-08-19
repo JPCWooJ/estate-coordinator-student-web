@@ -104,8 +104,8 @@ export function HomeExperience() {
               <p>This is not legal, tax, or investment advice.</p>
               <ul>
                 <li>
-                  Share your real planning context if you are an invited test
-                  participant.
+                  Use representative planning context and avoid sensitive personal
+                  facts unless the controlled-beta policy explicitly approves them.
                 </li>
                 <li>
                   Do not enter passwords, private keys, seed phrases, or full
@@ -115,8 +115,8 @@ export function HomeExperience() {
                   Existing estate-planning documents are not reviewed in this phase.
                 </li>
                 <li>
-                  Your saved planning information is retained under the cohort
-                  privacy controls.
+                  Your submitted answers are saved so you can resume the controlled
+                  beta later.
                 </li>
               </ul>
             </div>
