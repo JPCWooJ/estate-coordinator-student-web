@@ -3,328 +3,458 @@ import { describe, expect, it } from "vitest";
 import {
   createInitialRecord,
   createInitialWorkflowState,
+  emptyInterpretationPatch,
   Interpretation,
   MatterOpeningRecord,
+  OutcomeCodeSchema,
   OpeningStep,
-  OutcomeCode,
+  PlanningSummaryCorrection,
   WorkflowState,
 } from "./matter-opening";
+import { buildPrincipalPlanningSummary } from "./planning-summary";
 import {
   applyAcceptedInterpretation,
+  applyPlanningSummaryCorrection,
   confirmOpening,
-  prepareMatterOpeningForConfirmation,
+  getCanonicalQuestion,
 } from "./workflow";
 
-function interpretation(
-  step: OpeningStep,
+function accepted(
   patch: Partial<Interpretation["patch"]> = {},
-  signals: Partial<Interpretation["signals"]> = {},
 ): Interpretation {
   return {
-    accepted: true,
+    outcome: "accepted",
     acknowledgement: "Saved.",
-    needs_clarification: false,
     clarification_question: null,
-    patch: {
-      desired_outcomes: null,
-      top_three_priorities: null,
-      principal_definition_of_success: null,
-      priority_detail: null,
-      people_and_interests_snapshot: null,
-      people_circumstance_flags: null,
-      current_plan_status: null,
-      current_plan_snapshot: null,
-      changes_since_current_plan: null,
-      timing_reason: null,
-      timing_event: null,
-      timing_date: null,
-      timing_importance: null,
-      geographic_and_complexity_flags: null,
-      professional_and_family_contacts: null,
-      missing_contacts: null,
-      other_participants: null,
-      house_in_order_concern: null,
-      selected_discovery_path: null,
-      single_next_action: null,
-      ...patch,
-    },
-    signals: {
-      people_followup_required: false,
-      current_plan_exists: false,
-      contacts_complete: false,
-      ...signals,
-    },
-    stop: {
-      triggered: false,
-      category: null,
-      reason: null,
-      immediate_action: null,
-    },
-    proposed_next_step: step,
+    patch: { ...emptyInterpretationPatch(), ...patch },
+    stop: null,
   };
 }
 
 function advance(
   record: MatterOpeningRecord,
   state: WorkflowState,
-  nextInterpretation: Interpretation,
+  interpretation: Interpretation,
 ) {
-  return applyAcceptedInterpretation(record, state, nextInterpretation);
+  return applyAcceptedInterpretation(record, state, interpretation);
 }
 
-describe("Matter Opening deterministic workflow", () => {
-  it("asks follow-ups only for the three ranked outcomes and ignores model stage proposals", () => {
-    const matterId = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
-    let record = createInitialRecord(matterId);
+function confirmationReadyRecord(): MatterOpeningRecord {
+  return {
+    ...createInitialRecord("aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"),
+    desired_outcomes: [
+      "intended_transfer",
+      "incapacity_readiness",
+      "tax_minimization",
+    ],
+    top_three_priorities: [
+      "intended_transfer",
+      "incapacity_readiness",
+      "tax_minimization",
+    ],
+    principal_definition_of_success: "Protect the family and keep the plan simple.",
+    priority_details: [
+      { outcome: "intended_transfer", detail: "Transfer to adult children." },
+      { outcome: "incapacity_readiness", detail: "Maintain family continuity." },
+      { outcome: "tax_minimization", detail: "Avoid unnecessary complexity." },
+    ],
+    people_and_interests_snapshot: "Spouse and adult children.",
+    current_plan_status: "update_needed",
+    current_plan_snapshot: "Living trust and will completed in 2018.",
+    changes_since_current_plan: ["Moved primary residence to Florida."],
+    timing_event_or_deadline: {
+      reason: "The plan is overdue for review.",
+      event: "none identified",
+      date: "none identified",
+      importance: "normal",
+    },
+    geographic_and_complexity_flags: ["Florida home", "Georgia rental"],
+    professional_and_family_contacts: [
+      {
+        name: "Jordan Lee",
+        firm: "Harbor Counsel",
+        expertise: "estate planning",
+        estate_role: "planning counsel",
+        email: "contact@harborcounsel.com",
+        telephone: "555-555-1111",
+        contact_trigger: "planning update",
+        priority: "primary",
+        missing_information: [],
+      },
+    ],
+    other_participants: [
+      {
+        name: "Spouse",
+        relationship: "family",
+        intended_role: "participate",
+        involvement_timing: "initial planning",
+      },
+    ],
+  };
+}
+
+describe("Matter Opening v0.3 workflow", () => {
+  it("uses the approved outcome taxonomy", () => {
+    expect(OutcomeCodeSchema.options).toEqual([
+      "intended_transfer",
+      "tax_minimization",
+      "asset_protection",
+      "support_for_others",
+      "distribution_control",
+      "incapacity_readiness",
+      "conflict_prevention",
+      "heir_readiness",
+      "plan_alignment",
+      "house_in_order_assurance",
+      "business_charitable_family_legacy",
+      "other",
+    ]);
+  });
+
+  it.each([
+    [
+      "MO01_OUTCOMES",
+      "If this estate-planning process works exactly as you hope, what will it accomplish for you? Tell me what matters most, and if you can, put your top three priorities in order.",
+    ],
+    [
+      "MO01_PRIORITIES",
+      "Of those outcomes, which three matter most to you, in priority order?",
+    ],
+    [
+      "MO02_PEOPLE",
+      "At a high level, who do you expect should benefit from or be protected by your estate plan?",
+    ],
+    [
+      "MO02_CIRCUMSTANCES",
+      "Are there any circumstances involving these people that the planning process must understand?",
+    ],
+    [
+      "MO03_CURRENT_PLAN",
+      "Do you already have estate-planning documents or arrangements in place?",
+    ],
+    [
+      "MO03_PLAN_DETAILS",
+      "What documents or arrangements do you know exist, approximately when were they completed, and where are they kept?",
+    ],
+    [
+      "MO03_CHANGES",
+      "What important changes have occurred since they were completed?",
+    ],
+    [
+      "MO04_TIMING",
+      "Why are you addressing this now, and is there an event or deadline affecting the timing?",
+    ],
+    [
+      "MO05_FOOTPRINT",
+      "Where is your primary home, and do you have important property, businesses, trusts, citizenship, residence, or other connections in another state or country?",
+    ],
+    [
+      "MO05_COMPLEXITY",
+      "Are there any trusts, businesses, foreign connections, digital assets, major charitable plans, or other complexities you already know should be considered?",
+    ],
+    [
+      "MO06_CONTACTS",
+      "Who should be involved or available to help with your estate plan now or in the future? This might include attorneys, tax or financial professionals, assistants, trusted family members, or anyone else who should know what to do.",
+    ],
+    [
+      "MO08_HOUSE_IN_ORDER",
+      "What would you need to see, understand, or have confirmed to feel confident that your estate plan is complete, current, and working the way you intend?",
+    ],
+    [
+      "MO08_CONFIRM",
+      "Does this accurately capture what you want your estate-planning process to accomplish and what matters most to you?",
+    ],
+  ] as const)("keeps the %s question aligned to canon", (step, question) => {
+    expect(
+      getCanonicalQuestion(confirmationReadyRecord(), {
+        step,
+        clarification: null,
+        stop: null,
+      }),
+    ).toBe(question);
+  });
+
+  it("derives priority follow-ups from the record without queue state", () => {
+    let record = createInitialRecord("aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa");
     let state = createInitialWorkflowState();
-
-    let result = advance(
+    ({ record, state } = advance(
       record,
       state,
-      interpretation(
-        "CONFIRMED",
-        {
-          desired_outcomes: [
-            "intended_transfer",
-            "incapacity_readiness",
-            "tax_minimization",
-            "legacy",
-          ],
-          principal_definition_of_success: "Protect the family and keep the plan simple.",
-        },
-      ),
-    );
-    expect(result.state.step).toBe("MO01_PRIORITIES");
-    ({ record, state } = result);
-
-    result = advance(
-      record,
-      state,
-      interpretation("MO01_PRIORITIES", {
+      accepted({
+        desired_outcomes: [
+          "intended_transfer",
+          "incapacity_readiness",
+          "tax_minimization",
+        ],
         top_three_priorities: [
           "intended_transfer",
           "incapacity_readiness",
           "tax_minimization",
         ],
+        principal_definition_of_success: "A practical family plan.",
       }),
-    );
-    expect(result.state.active_goal_followup).toBe("intended_transfer");
-    ({ record, state } = result);
+    ));
 
-    for (const outcome of [
-      "intended_transfer",
-      "incapacity_readiness",
-      "tax_minimization",
-    ] as OutcomeCode[]) {
-      result = advance(
+    expect(state).toEqual({
+      step: "MO01_GOAL_FOLLOWUP",
+      clarification: null,
+      stop: null,
+    });
+    const expectedQuestions = [
+      "Who or what do you most want to benefit, and what transfer outcome do you most want to prevent?",
+      "If you could not manage your affairs, what must continue without disruption?",
+      "If tax minimization requires tradeoffs, how would you balance it against simplicity, flexibility, access, and control?",
+    ];
+    for (const [index, outcome] of record.top_three_priorities.entries()) {
+      expect(getCanonicalQuestion(record, state)).toBe(expectedQuestions[index]);
+      ({ record, state } = advance(
         record,
         state,
-        interpretation("MO01_GOAL_FOLLOWUP", {
-          priority_detail: { outcome, detail: `Synthetic detail for ${outcome}` },
-        }),
-      );
-      ({ record, state } = result);
+        accepted({ priority_detail: { outcome, detail: `Detail for ${outcome}.` } }),
+      ));
     }
-
     expect(state.step).toBe("MO02_PEOPLE");
-    expect(record.priority_details.map((item) => item.outcome)).toEqual([
-      "intended_transfer",
-      "incapacity_readiness",
-      "tax_minimization",
-    ]);
-    expect(record.priority_details.some((item) => item.outcome === "legacy")).toBe(false);
+    expect(record.priority_details).toHaveLength(3);
   });
 
-  it("uses the approved conditional current-plan branches", () => {
+  it("persists clarification as the active question without advancing or mutating the record", () => {
     const record = createInitialRecord("aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa");
-    const state = { ...createInitialWorkflowState(), step: "MO03_CURRENT_PLAN" as const };
-
-    const noPlan = advance(
-      record,
-      state,
-      interpretation(
-        "MO03_CURRENT_PLAN",
-        {
-          current_plan_status: "no_existing_plan",
-          current_plan_snapshot: "No existing plan.",
-        },
-        { current_plan_exists: false },
-      ),
-    );
-    expect(noPlan.state.step).toBe("MO04_TIMING");
-    expect(noPlan.record.matter_classification).toBe("NEW_PLAN");
-
-    const existingPlan = advance(
-      record,
-      state,
-      interpretation(
-        "MO03_CURRENT_PLAN",
-        {
-          current_plan_status: "update_needed",
-          current_plan_snapshot: "A will and trust need updating.",
-        },
-        { current_plan_exists: true },
-      ),
-    );
-    expect(existingPlan.state.step).toBe("MO03_PLAN_DETAILS");
-    expect(existingPlan.record.matter_classification).toBe("PLAN_UPDATE");
-
-    const planDetails = advance(
-      existingPlan.record,
-      existingPlan.state,
-      interpretation("MO03_PLAN_DETAILS", {
-        current_plan_snapshot: "Synthetic will and trust completed in 2020.",
-      }, { current_plan_exists: true }),
-    );
-    expect(planDetails.state.step).toBe("MO03_CHANGES");
-
-    const changes = advance(
-      planDetails.record,
-      planDetails.state,
-      interpretation("MO03_CHANGES", {
-        changes_since_current_plan: ["Synthetic relocation"],
-      }, { current_plan_exists: true }),
-    );
-    expect(changes.state.step).toBe("MO04_TIMING");
-  });
-
-  it("runs only the triggered people and contact follow-up branches", () => {
-    const record = createInitialRecord("aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa");
-    const peopleState = {
-      ...createInitialWorkflowState(),
-      step: "MO02_PEOPLE" as const,
-    };
-    const people = advance(
-      record,
-      peopleState,
-      interpretation(
-        "MO02_PEOPLE",
-        {
-          people_and_interests_snapshot: "A synthetic minor beneficiary.",
-          people_circumstance_flags: ["minor"],
-        },
-        { people_followup_required: true },
-      ),
-    );
-    expect(people.state.step).toBe("MO02_CIRCUMSTANCES");
-
-    const circumstances = advance(
-      people.record,
-      people.state,
-      interpretation("MO02_CIRCUMSTANCES", {
-        people_circumstance_flags: ["continuing management needed"],
-      }),
-    );
-    expect(circumstances.state.step).toBe("MO03_CURRENT_PLAN");
-
-    const contactState = {
-      ...createInitialWorkflowState(),
-      step: "MO06_CONTACTS" as const,
-    };
-    const contact = advance(
-      record,
-      contactState,
-      interpretation("MO06_CONTACTS", {
-        professional_and_family_contacts: [
-          {
-            name: "Synthetic Attorney",
-            firm: "Example Firm",
-            expertise: "estate planning",
-            estate_role: "planning counsel",
-            email: "unknown",
-            telephone: "unknown",
-            contact_trigger: "planning update",
-            priority: "primary",
-            missing_information: ["email", "telephone"],
-          },
-        ],
-      }),
-    );
-    expect(contact.state.step).toBe("MO06_CONTACTS_MORE");
-    expect(contact.record.professional_and_family_contacts).toHaveLength(1);
-
-    const contactComplete = advance(
-      contact.record,
-      contact.state,
-      interpretation(
-        "MO06_CONTACTS_MORE",
-        { missing_contacts: ["CONTACT_NEEDED"] },
-        { contacts_complete: true },
-      ),
-    );
-    expect(contactComplete.state.step).toBe("MO07_PARTICIPANTS");
-    expect(contactComplete.record.missing_contacts).toEqual(["CONTACT_NEEDED"]);
-  });
-
-  it("stops the affected lane for an expedited or mandatory-stop event", () => {
-    const record = createInitialRecord("aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa");
-    const state = { ...createInitialWorkflowState(), step: "MO04_TIMING" as const };
-    const candidate = interpretation("MO04_TIMING", {
-      timing_reason: "A death occurred yesterday.",
-      timing_event: "death",
-      timing_importance: "critical",
+    const state = createInitialWorkflowState();
+    const result = advance(record, state, {
+      outcome: "clarification",
+      acknowledgement: "",
+      clarification_question: "Which three results matter most?",
+      patch: emptyInterpretationPatch(),
+      stop: null,
     });
-    candidate.stop = {
-      triggered: true,
-      category: "expedited_event",
-      reason: "A death occurred yesterday.",
-      immediate_action: "Contact the estate attorney.",
-    };
 
-    const result = advance(record, state, candidate);
-    expect(result.state.step).toBe("STOPPED");
-    expect(result.record.matter_status).toBe("EXPEDITED_EVENT");
-    expect(result.state.stop?.immediate_action).toBe("Contact the estate attorney.");
-  });
-
-  it("derives the discovery recommendation before review and passes the unchanged exit gate", () => {
-    const base = createInitialRecord("aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa");
-    const record: MatterOpeningRecord = {
-      ...base,
-      desired_outcomes: ["intended_transfer"],
-      top_three_priorities: [
-        "incapacity_readiness",
-        "intended_transfer",
-        "tax_minimization",
-      ],
-      principal_definition_of_success: "A coordinated synthetic plan.",
-      current_plan_snapshot: "No existing plan.",
-    };
-    const confirmState = {
-      ...createInitialWorkflowState(),
-      step: "MO08_CONFIRM" as const,
-    };
-    expect(() => confirmOpening(record, confirmState)).toThrow(
-      "The Matter Opening exit gate is not complete.",
+    expect(result.record).toBe(record);
+    expect(result.state.step).toBe("MO01_OUTCOMES");
+    expect(result.state.clarification?.question).toBe(
+      "Which three results matter most?",
+    );
+    expect(getCanonicalQuestion(result.record, result.state)).toBe(
+      "Which three results matter most?",
     );
 
-    const recovered = prepareMatterOpeningForConfirmation(record);
-    expect(recovered.selected_discovery_path).toBe("incapacity and continuity");
-    expect(confirmOpening(recovered, confirmState).state.step).toBe("CONFIRMED");
-
-    const prepared = advance(
-      record,
-      { ...createInitialWorkflowState(), step: "MO08_HOUSE_IN_ORDER" as const },
-      interpretation("MO08_HOUSE_IN_ORDER", {
-        house_in_order_concern: "none identified",
+    const recovered = advance(
+      result.record,
+      result.state,
+      accepted({
+        desired_outcomes: ["intended_transfer"],
+        top_three_priorities: [
+          "intended_transfer",
+          "incapacity_readiness",
+          "tax_minimization",
+        ],
+        principal_definition_of_success: "A practical plan.",
       }),
     );
-    expect(prepared.state.step).toBe("MO08_CONFIRM");
-    expect(prepared.record.selected_discovery_path).toBe(
-      "incapacity and continuity",
-    );
-    expect(prepared.record.single_next_action).toBe(
-      "Begin the first selected discovery module using only the confirmed Matter Opening information.",
-    );
-
-    const result = confirmOpening(
-      prepared.record,
-      prepared.state,
-      "2026-08-17T20:00:00.000Z",
-    );
-
-    expect(result.state.step).toBe("CONFIRMED");
-    expect(result.record.principal_confirmed).toBe("yes");
-    expect(result.record.confirmation_date).toBe("2026-08-17T20:00:00.000Z");
+    expect(recovered.state.step).toBe("MO01_GOAL_FOLLOWUP");
+    expect(recovered.state.clarification).toBeNull();
   });
+
+  it.each([
+    ["no_existing_plan", "NEW_PLAN"],
+    ["unsure_what_exists", "PLAN_REVIEW"],
+    ["review_requested", "PLAN_REVIEW"],
+    ["current", "PLAN_REVIEW"],
+    ["update_needed", "PLAN_UPDATE"],
+    ["implementation_or_organization_needed", "IMPLEMENTATION_ORGANIZATION"],
+    ["unknown", "PLAN_REVIEW"],
+  ] as const)("classifies %s with the approved provisional value", (status, classification) => {
+    const record = createInitialRecord("aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa");
+    const state = {
+      ...createInitialWorkflowState(),
+      step: "MO03_CURRENT_PLAN" as OpeningStep,
+    };
+    const result = advance(
+      record,
+      state,
+      accepted({
+        current_plan_status: status,
+        current_plan_snapshot: "A living trust and will from 2018.",
+      }),
+    );
+    expect(result.record.matter_classification).toBe(classification);
+  });
+
+  it("applies one constrained Planning Summary correction and clears clarification", () => {
+    const record = confirmationReadyRecord();
+    const state: WorkflowState = {
+      step: "MO08_CONFIRM",
+      clarification: { question: "Which property location should change?" },
+      stop: null,
+    };
+    const correction: PlanningSummaryCorrection = {
+      outcome: "accepted",
+      acknowledgement: "Updated.",
+      clarification_question: null,
+      patch: {
+        ...emptyInterpretationPatch(),
+        geographic_and_complexity_flags: ["Florida home", "Alabama rental"],
+      },
+    };
+    const result = applyPlanningSummaryCorrection(record, state, correction);
+    expect(result.changed).toBe(true);
+    expect(result.state.clarification).toBeNull();
+    expect(result.record.geographic_and_complexity_flags).toEqual([
+      "Florida home",
+      "Alabama rental",
+    ]);
+    expect(result.record.current_plan_snapshot).toBe(record.current_plan_snapshot);
+  });
+
+  it("applies a supported priority-context correction to the Planning Summary", () => {
+    const record = confirmationReadyRecord();
+    const result = applyPlanningSummaryCorrection(
+      record,
+      { step: "MO08_CONFIRM", clarification: null, stop: null },
+      {
+        outcome: "accepted",
+        acknowledgement: "Updated.",
+        clarification_question: null,
+        patch: {
+          ...emptyInterpretationPatch(),
+          priority_detail: {
+            outcome: "intended_transfer",
+            detail: "Transfer equally to the adult children.",
+          },
+        },
+      },
+    );
+
+    expect(
+      buildPrincipalPlanningSummary(result.record).priorityContext,
+    ).toContainEqual({
+      outcome: "Intended transfer",
+      detail: "Transfer equally to the adult children.",
+    });
+  });
+
+  it("requires canonical context for a changed top priority before confirmation", () => {
+    const state: WorkflowState = {
+      step: "MO08_CONFIRM",
+      clarification: null,
+      stop: null,
+    };
+    const changed = applyPlanningSummaryCorrection(
+      confirmationReadyRecord(),
+      state,
+      {
+        outcome: "accepted",
+        acknowledgement: "Priorities updated.",
+        clarification_question: null,
+        patch: {
+          ...emptyInterpretationPatch(),
+          top_three_priorities: [
+            "intended_transfer",
+            "incapacity_readiness",
+            "asset_protection",
+          ],
+        },
+      },
+    );
+
+    expect(changed.record.priority_details).not.toContainEqual(
+      expect.objectContaining({ outcome: "tax_minimization" }),
+    );
+    expect(changed.state.clarification?.question).toBe(
+      "Which risks concern you most - creditors, divorce, litigation, financial immaturity, outside influence, or something else?",
+    );
+    expect(() => confirmOpening(changed.record, changed.state)).toThrow(
+      "The Planning Summary confirmation gate is not complete.",
+    );
+
+    const completed = applyPlanningSummaryCorrection(
+      changed.record,
+      changed.state,
+      {
+        outcome: "accepted",
+        acknowledgement: "Priority context updated.",
+        clarification_question: null,
+        patch: {
+          ...emptyInterpretationPatch(),
+          priority_detail: {
+            outcome: "asset_protection",
+            detail: "Protection from creditor and litigation risk.",
+          },
+        },
+      },
+    );
+
+    expect(completed.state.clarification).toBeNull();
+    expect(
+      buildPrincipalPlanningSummary(completed.record).priorityContext,
+    ).toContainEqual({
+      outcome: "Asset protection",
+      detail: "Protection from creditor and litigation risk.",
+    });
+    expect(confirmOpening(completed.record, completed.state).state.step).toBe(
+      "BLUEPRINT_READY",
+    );
+  });
+
+  it("builds the complete principal-facing summary without internal fields", () => {
+    const record = confirmationReadyRecord();
+    const summary = buildPrincipalPlanningSummary(record);
+    const serialized = JSON.stringify(summary);
+
+    expect(summary.currentPlanSnapshot).toContain("2018");
+    expect(summary.knownChanges).toContain("Moved primary residence to Florida.");
+    expect(summary.complexityFlags).toContain("Georgia rental");
+    expect(summary.contacts[0]?.name).toBe("Jordan Lee");
+    expect(summary.participants).toContain("Spouse");
+    expect(summary.topPriorities).toEqual([
+      "Intended transfer",
+      "Incapacity readiness",
+      "Tax minimization",
+    ]);
+    expect(summary.topPriorities.every((priority) => !/^\d+\./.test(priority))).toBe(
+      true,
+    );
+    expect(summary.recommendedNextStep).toContain("Estate Blueprint");
+    expect(serialized).not.toContain("PLAN_UPDATE");
+    expect(serialized).not.toContain("house_in_order");
+    expect(serialized).not.toContain(record.house_in_order_concern);
+  });
+
+  it("confirms the baseline directly into BLUEPRINT_READY", () => {
+    const result = confirmOpening(confirmationReadyRecord(), {
+      step: "MO08_CONFIRM",
+      clarification: null,
+      stop: null,
+    }, "2026-08-19T12:00:00.000Z");
+
+    expect(result.state.step).toBe("BLUEPRINT_READY");
+    expect(result.record.matter_status).toBe("BLUEPRINT_READY");
+    expect(result.record.principal_confirmed).toBe("yes");
+    expect(result.record.confirmation_date).toBe("2026-08-19T12:00:00.000Z");
+  });
+
+  it.each(["unknown", "not decided", "not applicable"])(
+    "allows the permitted '%s' response through confirmation",
+    (permittedAnswer) => {
+      const record: MatterOpeningRecord = {
+        ...confirmationReadyRecord(),
+        matter_classification: "PLAN_REVIEW",
+        principal_definition_of_success: permittedAnswer,
+        people_and_interests_snapshot: permittedAnswer,
+        current_plan_status: "unknown",
+        current_plan_snapshot: permittedAnswer,
+        timing_event_or_deadline: {
+          reason: permittedAnswer,
+          event: permittedAnswer,
+          date: permittedAnswer,
+          importance: permittedAnswer,
+        },
+      };
+      const result = confirmOpening(
+        record,
+        { step: "MO08_CONFIRM", clarification: null, stop: null },
+        "2026-08-19T12:00:00.000Z",
+      );
+      expect(result.state.step).toBe("BLUEPRINT_READY");
+    },
+  );
 });

@@ -13,9 +13,10 @@ async function answer(page: import("@playwright/test").Page, value: string) {
     throw new Error(`Turn was rejected: ${await response.text()}`);
   }
   await expect(page.locator(".save-state")).toContainText("Saved");
+  return response.json();
 }
 
-test("controlled access, canonical Matter Opening, correction, and save/resume", async ({
+test("continuous priorities-to-Blueprint handoff saves, clarifies, corrects, and isolates", async ({
   page,
 }, testInfo) => {
   const browserErrors: string[] = [];
@@ -23,63 +24,164 @@ test("controlled access, canonical Matter Opening, correction, and save/resume",
     if (message.type() === "error") browserErrors.push(message.text());
   });
   page.on("pageerror", (error) => browserErrors.push(error.message));
+
   const syntheticUser = testInfo.project.name === "mobile-chromium" ? "B" : "A";
   const signInButton = `Use synthetic student ${syntheticUser}`;
+  const otherSignInButton =
+    syntheticUser === "A" ? "Use synthetic student B" : "Use synthetic student A";
+  const userId =
+    syntheticUser === "A"
+      ? "11111111-1111-4111-8111-111111111111"
+      : "22222222-2222-4222-8222-222222222222";
 
   await page.goto("/");
-  const resetResponse = await page.evaluate(async () => {
-    const response = await fetch("/api/test/reset", { method: "POST" });
-    return { ok: response.ok, body: await response.text() };
-  });
-  expect(resetResponse.ok, resetResponse.body).toBe(true);
-  await page.getByRole("button", { name: signInButton }).click();
-  await expect(page.getByRole("heading", { name: "Controlled educational beta" })).toBeVisible();
-  await page.getByRole("checkbox").check();
-  await page.getByRole("button", { name: "Acknowledge and continue" }).click();
-  await page.getByRole("button", { name: "Start Matter Opening" }).click();
+  expect(
+    await page.evaluate(async () => {
+      const response = await fetch("/api/test/reset", {
+        method: "POST",
+        headers: { origin: window.location.origin },
+      });
+      return response.status;
+    }),
+  ).toBe(200);
+  expect(
+    await page.evaluate(async (id) => {
+      const response = await fetch("/api/session", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ userId: id }),
+      });
+      return response.status;
+    }, userId),
+  ).toBe(200);
+  const sessionPayload = await page.evaluate(async () =>
+    (await fetch("/api/session")).json(),
+  );
+  if (!sessionPayload.betaAcknowledged) {
+    expect(
+      await page.evaluate(async () => (await fetch("/api/beta", { method: "POST" })).status),
+    ).toBe(200);
+  }
 
-  await expect(page.getByText("If this estate-planning process works exactly as you hope")).toBeVisible();
-  await answer(
-    page,
-    "I want my children to inherit as intended, my family to manage affairs if I am incapacitated, and taxes and expenses kept down.",
+  await page.goto("/home");
+  const created = await page.evaluate(async () => {
+    const response = await fetch("/api/matters", { method: "POST" });
+    return { status: response.status, body: await response.json() };
+  });
+  expect(created.status).toBe(201);
+  await page.goto(`/matter/${created.body.id}`);
+  await page.getByRole("button", { name: "Begin interview" }).click();
+
+  const clarification = await answer(page, "I need help framing this.");
+  expect(clarification.matter.workflowState.step).toBe("MO01_OUTCOMES");
+  expect(clarification.matter.workflowState.clarification.question).toContain(
+    "three most important results",
   );
-  await answer(
+  await expect(
+    page.getByText(
+      "In ordinary language, what are the three most important results you want from your estate plan?",
+      { exact: true },
+    ),
+  ).toBeVisible();
+  await expect(page.locator(".error-text")).toHaveText("");
+
+  const accepted = await answer(
     page,
-    "1. Intended transfer; 2. Incapacity readiness; 3. Tax minimization",
+    "My top priorities are intended transfer, incapacity readiness, and tax minimization; keep things practical and simple.",
   );
-  await answer(page, "My two adult children equally; prevent an unintended transfer.");
-  await answer(page, "Household bills, property, and investment oversight must continue.");
-  await answer(page, "Favor simplicity and flexibility over an aggressive tax result.");
-  await answer(page, "My spouse and two adult children should benefit and be protected.");
-  await answer(page, "No existing plan.");
+  expect(accepted.matter.workflowState.step).toBe("MO01_GOAL_FOLLOWUP");
+  expect(accepted.matter.workflowState.clarification).toBeNull();
 
   await page.reload();
-  await expect(page.getByText("Why are you addressing this now")).toBeVisible();
+  await expect(
+    page.getByText(
+      "Who or what do you most want to benefit, and what transfer outcome do you most want to prevent?",
+      { exact: true },
+    ),
+  ).toBeVisible();
+
+  await answer(page, "My adult children should inherit through a practical plan.");
+  await answer(page, "Household and investment decisions should continue if I am incapacitated.");
+  await answer(page, "Avoid unnecessary tax complexity and cost.");
+  await answer(page, "My spouse and two adult children should benefit and be protected.");
+  await answer(
+    page,
+    "I have an existing living trust and will from 2018 that need review.",
+  );
+  await answer(page, "The living trust and will were completed in 2018.");
+  await answer(page, "Renovated estate plan documents in 2022.");
+
+  await page.reload();
   await page.getByRole("button", { name: "Sign out" }).click();
   await page.getByRole("button", { name: signInButton }).click();
-  await page.getByRole("link", { name: "Resume matter" }).click();
-  await expect(page.getByText("Why are you addressing this now")).toBeVisible();
+  await page.getByRole("link", { name: "Resume conversation" }).click();
+  await expect(page.getByLabel("Your response")).toBeVisible();
 
   await answer(page, "I want to get organized. There is no specific deadline.");
-  await answer(page, "My primary home is Florida; I own a rental property in Georgia.");
+  await answer(page, "My primary home is Florida and I own a rental in Georgia.");
   await answer(page, "A family business and digital assets should be considered.");
-  await answer(page, "A contact is needed.");
-  await answer(page, "My spouse should participate now; my adult children can join later.");
-  await answer(page, "No additional concern.");
+  await answer(
+    page,
+    "Jordan Lee at Harbor Counsel should serve as planning counsel, and my spouse should participate now and in future reviews.",
+  );
+  await answer(page, "None identified.");
 
-  await expect(page.getByRole("heading", { name: "Matter Opening record" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Planning Summary" })).toBeVisible();
+  const priorityItems = page
+    .getByLabel("Planning Summary")
+    .locator("section")
+    .filter({ has: page.getByRole("heading", { name: "Top three priorities" }) })
+    .locator("ol > li");
+  await expect(priorityItems).toHaveText([
+    "Intended transfer",
+    "Incapacity readiness",
+    "Tax minimization",
+  ]);
+  await expect(page.getByText("Jordan Lee").first()).toBeVisible();
+  await expect(page.getByText("Known planning changes")).toBeVisible();
+  await expect(
+    page
+      .getByLabel("Planning Summary")
+      .getByText("Renovated estate plan documents in 2022.", { exact: true }),
+  ).toBeVisible();
+  await expect(page.getByText("Timing and material complexity")).toBeVisible();
+  await expect(page.getByText("Recommended next step")).toBeVisible();
+  await expect(page.getByText(/discovery/i)).toHaveCount(0);
+  await expect(page.getByRole("link", { name: /download.*summary/i })).toHaveCount(0);
+
   await page.getByRole("button", { name: "I need to correct something" }).click();
-  await page.getByLabel("Describe the correction").fill("My primary home is Florida, not Georgia.");
+  await page
+    .getByLabel("Describe the correction")
+    .fill("The rental property is in Alabama, not Georgia.");
+  const correctionResponse = page.waitForResponse(
+    (response) =>
+      response.url().includes("/corrections") &&
+      response.request().method() === "POST",
+  );
   await page.getByRole("button", { name: "Save correction" }).click();
-  await expect(page.getByText("Primary home: Florida")).toBeVisible();
-  await page.getByRole("button", { name: "Confirm Matter Opening" }).click();
-  await expect(page.getByRole("heading", { name: "Matter Opening confirmed" })).toBeVisible();
+  expect((await correctionResponse).ok()).toBe(true);
+  await expect(
+    page
+      .getByLabel("Planning Summary")
+      .getByText(/Rental property in Alabama/),
+  ).toBeVisible();
 
-  await page.getByRole("link", { name: "Return to matter home" }).click();
+  await page.getByRole("button", { name: "Confirm planning summary" }).click();
+  await expect(
+    page.getByRole("heading", { name: "Planning summary confirmed" }),
+  ).toBeVisible();
+  await expect(page.getByText(/serves as Stage 1/)).toBeVisible();
+  await expect(page.getByRole("link", { name: /download.*summary/i })).toHaveCount(0);
+  await page.getByRole("button", { name: "Sign out" }).click();
+  await page.getByRole("button", { name: otherSignInButton }).click();
+  expect(await page.request.get(`/api/matters/${created.body.id}`)).not.toBeOK();
+
   await page.getByRole("button", { name: "Sign out" }).click();
   await page.getByRole("button", { name: signInButton }).click();
-  await page.getByRole("link", { name: "View confirmed record" }).click();
-  await expect(page.getByRole("heading", { name: "Matter Opening confirmed" })).toBeVisible();
+  await page.goto(`/matter/${created.body.id}`);
+  await expect(
+    page.getByRole("heading", { name: "Planning summary confirmed" }),
+  ).toBeVisible();
   await expect(page.locator("body")).not.toHaveText("");
   await expect(
     page.locator(

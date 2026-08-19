@@ -1,332 +1,197 @@
 import "server-only";
 
 import {
-  DiscoveryPathSchema,
+  emptyInterpretationPatch,
   Interpretation,
-  InterpretationSchema,
   MatterOpeningRecord,
-  OpeningStep,
-  OutcomeCode,
+  PlanningSummaryCorrection,
   WorkflowState,
 } from "@/lib/domain/matter-opening";
 
-const outcomePatterns: Array<[OutcomeCode, RegExp]> = [
-  ["intended_transfer", /inherit|pass|transfer|children|organizations?/i],
-  ["tax_minimization", /tax|expense/i],
-  ["asset_protection", /creditor|divorce|litigation|protect/i],
-  ["support_for_others", /support|dependent|provide for/i],
-  ["distribution_control", /control|when .* receive|outright/i],
-  ["incapacity_readiness", /incapacit|manage my affairs|could not manage/i],
-  ["conflict_prevention", /conflict|delay|confusion|disagreement/i],
-  ["heir_readiness", /heirs?.*(know|find|contact)/i],
-  ["plan_alignment", /align|coordinate|documents?.*beneficiar/i],
-  ["house_in_order_assurance", /house.*order|evidence.*complete/i],
-  ["legacy", /legacy|business|charit|family value/i],
-  ["other", /other/i],
-];
+const OUTCOMES_ANSWER =
+  "My top priorities are intended transfer, incapacity readiness, and tax minimization; keep things practical and simple.";
 
-function findOutcomes(text: string): OutcomeCode[] {
-  const ranked = outcomePatterns
-    .map(([code, pattern]) => ({ code, index: text.search(pattern) }))
-    .filter((item) => item.index >= 0)
-    .sort((a, b) => a.index - b.index)
-    .map((item) => item.code);
-  return Array.from(new Set(ranked));
-}
-
-function baseInterpretation(step: OpeningStep): Interpretation {
-  return {
-    accepted: true,
-    acknowledgement: "Thank you. I’ve saved that.",
-    needs_clarification: false,
-    clarification_question: null,
-    patch: {
-      desired_outcomes: null,
-      top_three_priorities: null,
-      principal_definition_of_success: null,
-      priority_detail: null,
-      people_and_interests_snapshot: null,
-      people_circumstance_flags: null,
-      current_plan_status: null,
-      current_plan_snapshot: null,
-      changes_since_current_plan: null,
-      timing_reason: null,
-      timing_event: null,
-      timing_date: null,
-      timing_importance: null,
-      geographic_and_complexity_flags: null,
-      professional_and_family_contacts: null,
-      missing_contacts: null,
-      other_participants: null,
-      house_in_order_concern: null,
-      selected_discovery_path: null,
-      single_next_action: null,
-    },
-    signals: {
-      people_followup_required: false,
-      current_plan_exists: false,
-      contacts_complete: false,
-    },
-    stop: {
-      triggered: false,
-      category: null,
-      reason: null,
-      immediate_action: null,
-    },
-    proposed_next_step: step,
-  };
-}
-
-function pathFromPriorities(record: MatterOpeningRecord) {
-  const first = record.top_three_priorities[0];
-  const mapping: Partial<
-    Record<OutcomeCode, ReturnType<typeof DiscoveryPathSchema.parse>>
-  > = {
-    intended_transfer: "goals, values, and distribution intentions",
-    tax_minimization: "tax-minimization considerations",
-    asset_protection: "asset-protection considerations",
-    support_for_others: "family, beneficiaries, and dependents",
-    distribution_control: "goals, values, and distribution intentions",
-    incapacity_readiness: "incapacity and continuity",
-    conflict_prevention: "family, beneficiaries, and dependents",
-    heir_readiness: "professional contacts and heir readiness",
-    plan_alignment: "implementation and plan-alignment verification",
-    house_in_order_assurance: "implementation and plan-alignment verification",
-    legacy: "business, charitable, and legacy planning",
-    other: "goals, values, and distribution intentions",
-  };
-  return mapping[first] ?? "goals, values, and distribution intentions";
-}
-
-function parseContact(text: string) {
-  const parts = text.split("|").map((value) => value.trim());
-  if (parts.length < 2) return null;
-  const values = Array.from({ length: 8 }, (_, index) => parts[index] || "unknown");
-  const missing = values
-    .map((value, index) => ({ value, index }))
-    .filter(({ value }) => value === "unknown")
-    .map(({ index }) =>
-      [
-        "name",
-        "firm",
-        "expertise",
-        "estate role",
-        "email",
-        "telephone",
-        "contact trigger",
-        "priority",
-      ][index] ?? "field",
-    );
-  return {
-    name: values[0],
-    firm: values[1],
-    expertise: values[2],
-    estate_role: values[3],
-    email: values[4],
-    telephone: values[5],
-    contact_trigger: values[6],
-    priority:
-      values[7].toLowerCase() === "backup"
-        ? ("backup" as const)
-        : values[7].toLowerCase() === "primary"
-          ? ("primary" as const)
-          : ("unknown" as const),
-    missing_information: missing,
-  };
-}
-
-export function interpretSyntheticTurn(
-  step: OpeningStep,
-  answer: string,
-  record: MatterOpeningRecord,
-  state: WorkflowState,
+function accepted(
+  patch: Partial<Interpretation["patch"]>,
+  acknowledgement = "Thank you. I saved that.",
 ): Interpretation {
-  const text = answer.trim();
-  const lower = text.toLowerCase();
-  const result = baseInterpretation(step);
+  return {
+    outcome: "accepted",
+    acknowledgement,
+    clarification_question: null,
+    patch: { ...emptyInterpretationPatch(), ...patch },
+    stop: null,
+  };
+}
 
-  if (!text) {
-    return InterpretationSchema.parse({
-      ...result,
-      accepted: false,
-      needs_clarification: true,
-      clarification_question: "Please share a response before continuing.",
-    });
+function clarification(question: string): Interpretation {
+  return {
+    outcome: "clarification",
+    acknowledgement: "",
+    clarification_question: question,
+    patch: emptyInterpretationPatch(),
+    stop: null,
+  };
+}
+
+export function interpretSyntheticAnswer(input: {
+  question: string;
+  answer: string;
+  record: MatterOpeningRecord;
+  state: WorkflowState;
+}): Interpretation {
+  const { answer, record, state } = input;
+
+  if (answer === "A death occurred yesterday.") {
+    return {
+      outcome: "stop",
+      acknowledgement: "",
+      clarification_question: null,
+      patch: emptyInterpretationPatch(),
+      stop: {
+        category: "expedited_event",
+        reason: answer,
+        immediate_action: "Contact the estate attorney before continuing planning.",
+      },
+    };
   }
 
-  switch (step) {
-    case "MO01_OUTCOMES": {
-      const outcomes = findOutcomes(text);
-      result.patch.desired_outcomes = outcomes.length ? outcomes : ["other"];
-      result.patch.principal_definition_of_success = text;
-      break;
-    }
-    case "MO01_PRIORITIES": {
-      const outcomes = findOutcomes(text).filter((outcome) =>
-        record.desired_outcomes.includes(outcome),
+  if (answer === "I need help framing this.") {
+    return clarification(
+      "In ordinary language, what are the three most important results you want from your estate plan?",
+    );
+  }
+
+  switch (state.step) {
+    case "MO01_OUTCOMES":
+      return answer === OUTCOMES_ANSWER
+        ? accepted({
+            desired_outcomes: [
+              "intended_transfer",
+              "incapacity_readiness",
+              "tax_minimization",
+            ],
+            top_three_priorities: [
+              "intended_transfer",
+              "incapacity_readiness",
+              "tax_minimization",
+            ],
+            principal_definition_of_success:
+              "Protect the family while keeping the plan practical and simple.",
+          })
+        : clarification(
+            "Please identify the three most important results you want from your estate plan.",
+          );
+    case "MO01_PRIORITIES":
+      return accepted({
+        top_three_priorities: [
+          "intended_transfer",
+          "incapacity_readiness",
+          "tax_minimization",
+        ],
+      });
+    case "MO01_GOAL_FOLLOWUP": {
+      const outcome = record.top_three_priorities.find(
+        (priority) =>
+          !record.priority_details.some((detail) => detail.outcome === priority),
       );
-      const priorities = Array.from(new Set(outcomes)).slice(0, 3);
-      if (priorities.length < 3) {
-        priorities.push(
-          ...record.desired_outcomes.filter(
-            (outcome) => !priorities.includes(outcome),
-          ),
-        );
-      }
-      result.patch.top_three_priorities = priorities.slice(0, 3);
-      if (result.patch.top_three_priorities.length !== 3) {
-        result.accepted = false;
-        result.needs_clarification = true;
-        result.clarification_question =
-          "Please identify three priorities in order so I can ask only the relevant follow-ups.";
-      }
-      break;
+      return outcome
+        ? accepted({ priority_detail: { outcome, detail: answer } })
+        : clarification("Please describe what a good result would look like.");
     }
-    case "MO01_GOAL_FOLLOWUP":
-      result.patch.priority_detail = {
-        outcome: state.active_goal_followup ?? "other",
-        detail: text,
-      };
-      break;
-    case "MO02_PEOPLE": {
-      result.patch.people_and_interests_snapshot = text;
-      const flags = [
-        "special needs",
-        "dependent adult",
-        "minor",
-        "blended family",
-        "unequal treatment",
-        "family conflict",
-        "financial immaturity",
-        "business involvement",
-      ].filter((flag) => lower.includes(flag));
-      result.patch.people_circumstance_flags = flags;
-      result.signals.people_followup_required = flags.length > 0;
-      break;
-    }
+    case "MO02_PEOPLE":
+      return accepted({
+        people_and_interests_snapshot: answer,
+        people_circumstance_flags: [],
+      });
     case "MO02_CIRCUMSTANCES":
-      result.patch.people_circumstance_flags =
-        /none|not applicable|no additional/i.test(text) ? [] : [text];
-      break;
-    case "MO03_CURRENT_PLAN": {
-      const noPlan = /\bno\b|no existing|nothing in place/i.test(text);
-      result.signals.current_plan_exists = !noPlan;
-      if (noPlan) {
-        result.patch.current_plan_status = "no_existing_plan";
-      } else if (/implement|organize/i.test(text)) {
-        result.patch.current_plan_status =
-          "implementation_or_organization_needed";
-      } else if (/update/i.test(text)) {
-        result.patch.current_plan_status = "update_needed";
-      } else if (/not sure|unsure/i.test(text)) {
-        result.patch.current_plan_status = "unsure_what_exists";
-      } else {
-        result.patch.current_plan_status = "review_requested";
-      }
-      result.patch.current_plan_snapshot = text;
-      break;
-    }
+      return accepted({ people_circumstance_flags: [answer] });
+    case "MO03_CURRENT_PLAN":
+      return accepted({
+        current_plan_status: "update_needed",
+        current_plan_snapshot: answer,
+      });
     case "MO03_PLAN_DETAILS":
-      result.signals.current_plan_exists = true;
-      result.patch.current_plan_snapshot = text;
-      break;
+      return accepted({ current_plan_snapshot: answer });
     case "MO03_CHANGES":
-      result.signals.current_plan_exists = true;
-      result.patch.changes_since_current_plan = /none|no known/i.test(text)
-        ? ["no known material change"]
-        : text.split(/[;,]/).map((value) => value.trim()).filter(Boolean);
-      break;
-    case "MO04_TIMING": {
-      const noDeadline = /no (specific )?deadline|not urgent/i.test(text);
-      const stop =
-        !noDeadline &&
-        /death|died|incapacit|coerc|exploit|court|imminent|signing|tomorrow|urgent deadline/i.test(
-          text,
-        );
-      result.patch.timing_reason = text;
-      result.patch.timing_event = noDeadline ? "none identified" : text;
-      result.patch.timing_date = "unknown";
-      result.patch.timing_importance = stop ? "critical" : "ordinary";
-      if (stop) {
-        result.stop = {
-          triggered: true,
-          category: /coerc|exploit/i.test(text)
-            ? "capacity_or_voluntariness"
-            : "expedited_event",
-          reason: text,
-          immediate_action:
-            "Pause self-service work and contact the appropriate estate attorney or qualified professional about this event.",
-        };
-      }
-      break;
-    }
+      return accepted({ changes_since_current_plan: [answer] });
+    case "MO04_TIMING":
+      return accepted({
+        timing_reason: answer,
+        timing_event: "none identified",
+        timing_date: "none identified",
+        timing_importance: "normal",
+      });
     case "MO05_FOOTPRINT":
-    case "MO05_COMPLEXITIES":
-      result.patch.geographic_and_complexity_flags = /none|not applicable/i.test(
-        text,
-      )
-        ? ["not applicable"]
-        : text.split(/[;\n]/).map((value) => value.trim()).filter(Boolean);
-      break;
+      return accepted({
+        geographic_and_complexity_flags: [
+          "Primary home in Florida",
+          "Rental property in Georgia",
+        ],
+      });
+    case "MO05_COMPLEXITY":
+      return accepted({
+        geographic_and_complexity_flags: ["Family business", "Digital assets"],
+      });
     case "MO06_CONTACTS":
-    case "MO06_CONTACTS_MORE": {
-      if (/no (more|contact)|ready to continue|contact(?: is)? needed|none/i.test(text)) {
-        result.signals.contacts_complete = true;
-        if (/contact(?: is)? needed|none|no contact/i.test(text)) {
-          result.patch.missing_contacts = ["CONTACT_NEEDED"];
-        }
-      } else {
-        const contact = parseContact(text);
-        if (!contact) {
-          result.accepted = false;
-          result.needs_clarification = true;
-          result.clarification_question =
-            "Please provide the contact as name | firm | expertise | estate role | email | phone | contact trigger | primary or backup, or say that a contact is needed.";
-        } else {
-          result.patch.professional_and_family_contacts = [contact];
-          result.signals.contacts_complete = false;
-        }
-      }
-      break;
-    }
-    case "MO07_PARTICIPANTS":
-      result.patch.other_participants = /none|no one/i.test(text)
-        ? []
-        : [
-            {
-              name: text,
-              relationship: "principal-provided",
-              intended_role: "participate in the estate-planning process",
-              involvement_timing: "principal-provided",
-            },
-          ];
-      break;
+      return accepted({
+        professional_and_family_contacts: [
+          {
+            name: "Jordan Lee",
+            firm: "Harbor Counsel",
+            expertise: "estate planning",
+            estate_role: "planning counsel",
+            email: "contact@harborcounsel.com",
+            telephone: "555-555-1111",
+            contact_trigger: "planning update",
+            priority: "primary",
+            missing_information: [],
+          },
+        ],
+        missing_contacts: [],
+        other_participants: [
+          {
+            name: "Spouse",
+            relationship: "family",
+            intended_role: "participate",
+            involvement_timing: "initial planning and future reviews",
+          },
+        ],
+      });
     case "MO08_HOUSE_IN_ORDER":
-      result.patch.house_in_order_concern = /^(no|none)/i.test(text)
-        ? "none identified"
-        : text;
-      result.patch.selected_discovery_path = pathFromPriorities(record);
-      result.patch.single_next_action =
-        "Begin the first selected discovery module using only the confirmed Matter Opening information.";
-      break;
-    case "MO08_CONFIRM":
-      if (/primary home.*florida|florida.*primary home/i.test(text)) {
-        result.patch.geographic_and_complexity_flags = [
-          "Primary home: Florida",
-        ];
-        result.acknowledgement =
-          "I corrected the geographic footprint and saved a revision.";
-      } else if (/house.*order/i.test(text)) {
-        result.patch.house_in_order_concern = text;
-      } else {
-        result.patch.single_next_action = text;
-      }
-      break;
+      return accepted({ house_in_order_concern: answer });
     default:
-      result.accepted = false;
-      result.needs_clarification = true;
-      result.clarification_question = "No further response is accepted in this state.";
+      return clarification("Please answer the active planning question.");
+  }
+}
+
+export function interpretSyntheticCorrection(input: {
+  correction: string;
+  activeQuestion: string | null;
+  record: MatterOpeningRecord;
+}): PlanningSummaryCorrection {
+  if (input.correction === "The rental property is in Alabama, not Georgia.") {
+    return {
+      outcome: "accepted",
+      acknowledgement: "The Planning Summary now shows the rental property in Alabama.",
+      clarification_question: null,
+      patch: {
+        ...emptyInterpretationPatch(),
+        geographic_and_complexity_flags: [
+          "Primary home in Florida",
+          "Rental property in Alabama",
+          "Family business",
+          "Digital assets",
+        ],
+      },
+    };
   }
 
-  return InterpretationSchema.parse(result);
+  return {
+    outcome: "clarification",
+    acknowledgement: "",
+    clarification_question:
+      "What exact Planning Summary fact should change, and what should it say instead?",
+    patch: emptyInterpretationPatch(),
+  };
 }

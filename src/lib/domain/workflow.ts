@@ -1,79 +1,115 @@
 import {
-  DiscoveryPathSchema,
   Interpretation,
+  InterpretationPatch,
   MatterOpeningRecord,
-  MatterOpeningRecordSchema,
   OpeningStep,
-  OUTCOME_FOLLOW_UPS,
-  OUTCOME_LABELS,
   OutcomeCode,
+  PlanningSummaryCorrection,
   WorkflowState,
-  WorkflowStateSchema,
 } from "./matter-opening";
 
-export type WorkflowResult = {
-  record: MatterOpeningRecord;
-  state: WorkflowState;
-  assistantMessage: string;
+const OUTCOME_FOLLOWUP_QUESTIONS: Record<OutcomeCode, string> = {
+  intended_transfer:
+    "Who or what do you most want to benefit, and what transfer outcome do you most want to prevent?",
+  tax_minimization:
+    "If tax minimization requires tradeoffs, how would you balance it against simplicity, flexibility, access, and control?",
+  asset_protection:
+    "Which risks concern you most - creditors, divorce, litigation, financial immaturity, outside influence, or something else?",
+  support_for_others:
+    "Who may need continuing financial support, care, management, or oversight?",
+  distribution_control:
+    "Are there circumstances in which a beneficiary should not receive assets outright or immediately?",
+  incapacity_readiness:
+    "If you could not manage your affairs, what must continue without disruption?",
+  conflict_prevention:
+    "Where do you foresee disagreement, interference, delay, or confusion?",
+  heir_readiness: "What should your heirs know or be able to find immediately?",
+  plan_alignment:
+    "What are you least certain is coordinated correctly - documents, ownership, beneficiaries, trusts, or instructions?",
+  house_in_order_assurance:
+    "What evidence would give you confidence that the plan is complete, implemented, and current?",
+  business_charitable_family_legacy:
+    "What should continue or be preserved beyond the transfer of money?",
+  other: "What would success look like in practical terms?",
 };
 
-const OUTCOME_LIST = Object.entries(OUTCOME_LABELS)
-  .map(([, label], index) => `${index + 1}. ${label}`)
-  .join("\n");
-
-const DISCOVERY_PATH_BY_PRIORITY: Record<
-  OutcomeCode,
-  ReturnType<typeof DiscoveryPathSchema.parse>
-> = {
-  intended_transfer: "goals, values, and distribution intentions",
-  tax_minimization: "tax-minimization considerations",
-  asset_protection: "asset-protection considerations",
-  support_for_others: "family, beneficiaries, and dependents",
-  distribution_control: "goals, values, and distribution intentions",
-  incapacity_readiness: "incapacity and continuity",
-  conflict_prevention: "family, beneficiaries, and dependents",
-  heir_readiness: "professional contacts and heir readiness",
-  plan_alignment: "implementation and plan-alignment verification",
-  house_in_order_assurance: "implementation and plan-alignment verification",
-  legacy: "business, charitable, and legacy planning",
-  other: "goals, values, and distribution intentions",
+const STEP_LABELS: Record<OpeningStep, string> = {
+  MO01_OUTCOMES: "Your estate-planning priorities",
+  MO01_PRIORITIES: "Your top three priorities",
+  MO01_GOAL_FOLLOWUP: "What success looks like",
+  MO02_PEOPLE: "People and interests",
+  MO02_CIRCUMSTANCES: "Important circumstances",
+  MO03_CURRENT_PLAN: "Current planning context",
+  MO03_PLAN_DETAILS: "Current plan details",
+  MO03_CHANGES: "Important changes",
+  MO04_TIMING: "Timing",
+  MO05_FOOTPRINT: "Property and locations",
+  MO05_COMPLEXITY: "Material complexity",
+  MO06_CONTACTS: "People who should help",
+  MO08_HOUSE_IN_ORDER: "Anything else to organize",
+  MO08_CONFIRM: "Confirm Planning Summary",
+  BLUEPRINT_READY: "Ready to build your Estate Blueprint",
+  STOPPED: "Immediate attention required",
 };
 
-const MATTER_OPENING_NEXT_ACTION =
-  "Begin the first selected discovery module using only the confirmed Matter Opening information.";
+const STEP_PROGRESS: Record<OpeningStep, number> = {
+  MO01_OUTCOMES: 12,
+  MO01_PRIORITIES: 18,
+  MO01_GOAL_FOLLOWUP: 24,
+  MO02_PEOPLE: 34,
+  MO02_CIRCUMSTANCES: 40,
+  MO03_CURRENT_PLAN: 48,
+  MO03_PLAN_DETAILS: 54,
+  MO03_CHANGES: 60,
+  MO04_TIMING: 68,
+  MO05_FOOTPRINT: 76,
+  MO05_COMPLEXITY: 84,
+  MO06_CONTACTS: 90,
+  MO08_HOUSE_IN_ORDER: 94,
+  MO08_CONFIRM: 95,
+  BLUEPRINT_READY: 100,
+  STOPPED: 100,
+};
 
-export function prepareMatterOpeningForConfirmation(
-  record: MatterOpeningRecord,
-): MatterOpeningRecord {
-  const firstPriority = record.top_three_priorities[0];
-  return MatterOpeningRecordSchema.parse({
-    ...record,
-    selected_discovery_path:
-      record.selected_discovery_path === "unknown"
-        ? firstPriority
-          ? DISCOVERY_PATH_BY_PRIORITY[firstPriority]
-          : "goals, values, and distribution intentions"
-        : record.selected_discovery_path,
-    single_next_action:
-      record.single_next_action === "unknown"
-        ? MATTER_OPENING_NEXT_ACTION
-        : record.single_next_action,
-  });
+function nextPriority(record: MatterOpeningRecord) {
+  return record.top_three_priorities.find(
+    (priority) => {
+      const detail = record.priority_details.find(
+        (item) => item.outcome === priority,
+      );
+      return !detail || !detail.detail.trim();
+    },
+  );
+}
+
+function priorityFollowupQuestion(priority: OutcomeCode) {
+  return OUTCOME_FOLLOWUP_QUESTIONS[priority];
+}
+
+export function getStepLabel(step: OpeningStep) {
+  return STEP_LABELS[step];
+}
+
+export function getProgress(step: OpeningStep) {
+  return STEP_PROGRESS[step];
 }
 
 export function getCanonicalQuestion(
-  state: WorkflowState,
   record: MatterOpeningRecord,
-): string {
+  state: WorkflowState,
+) {
+  if (state.clarification) return state.clarification.question;
+
   switch (state.step) {
     case "MO01_OUTCOMES":
-      return `If this estate-planning process works exactly as you hope, what will it accomplish for you?\n\nIf helpful, consider:\n${OUTCOME_LIST}`;
+      return "If this estate-planning process works exactly as you hope, what will it accomplish for you? Tell me what matters most, and if you can, put your top three priorities in order.";
     case "MO01_PRIORITIES":
-      return "Which three of these outcomes matter most to you? Please put them in priority order.";
-    case "MO01_GOAL_FOLLOWUP":
-      return state.active_goal_followup
-        ? OUTCOME_FOLLOW_UPS[state.active_goal_followup]
-        : "What would success look like in practical terms?";
+      return "Of those outcomes, which three matter most to you, in priority order?";
+    case "MO01_GOAL_FOLLOWUP": {
+      const priority = nextPriority(record);
+      if (!priority) throw new Error("No priority follow-up is available.");
+      return priorityFollowupQuestion(priority);
+    }
     case "MO02_PEOPLE":
       return "At a high level, who do you expect should benefit from or be protected by your estate plan?";
     case "MO02_CIRCUMSTANCES":
@@ -88,61 +124,22 @@ export function getCanonicalQuestion(
       return "Why are you addressing this now, and is there an event or deadline affecting the timing?";
     case "MO05_FOOTPRINT":
       return "Where is your primary home, and do you have important property, businesses, trusts, citizenship, residence, or other connections in another state or country?";
-    case "MO05_COMPLEXITIES":
+    case "MO05_COMPLEXITY":
       return "Are there any trusts, businesses, foreign connections, digital assets, major charitable plans, or other complexities you already know should be considered?";
     case "MO06_CONTACTS":
-      return "Who should your family contact when estate-planning or estate-administration help is needed? You may name a contact or say that a contact is needed.";
-    case "MO06_CONTACTS_MORE":
-      return "Is there another professional or family contact to add? You may add one contact or say you are ready to continue.";
-    case "MO07_PARTICIPANTS":
-      return "Who else should participate in creating, maintaining, or eventually using this plan?";
+      return "Who should be involved or available to help with your estate plan now or in the future? This might include attorneys, tax or financial professionals, assistants, trusted family members, or anyone else who should know what to do.";
     case "MO08_HOUSE_IN_ORDER":
-      return "Is there anything else that would prevent you from feeling confident that your estate-planning house is in order?";
+      return "What would you need to see, understand, or have confirmed to feel confident that your estate plan is complete, current, and working the way you intend?";
     case "MO08_CONFIRM":
-      return "Is this an accurate statement of what you want us to accomplish and where we should begin?";
+      return "Does this accurately capture what you want your estate-planning process to accomplish and what matters most to you?";
+    case "BLUEPRINT_READY":
+      return "Your confirmed planning baseline is ready for the Estate Blueprint.";
     case "STOPPED":
-      return state.stop?.immediate_action ?? "Please contact the appropriate professional before continuing.";
-    case "CONFIRMED":
-      return "Matter Opening is confirmed.";
-    default:
-      return record.principal_definition_of_success;
+      return state.stop?.immediate_action ?? "This work requires immediate attention.";
   }
 }
 
-export function getStepLabel(step: OpeningStep): string {
-  if (step.startsWith("MO01")) return "MO-01 · Desired outcomes";
-  if (step.startsWith("MO02")) return "MO-02 · People affected";
-  if (step.startsWith("MO03")) return "MO-03 · Current plan";
-  if (step === "MO04_TIMING") return "MO-04 · Timing";
-  if (step.startsWith("MO05")) return "MO-05 · Geographic and complexity footprint";
-  if (step.startsWith("MO06")) return "MO-06 · Contact directory";
-  if (step === "MO07_PARTICIPANTS") return "MO-07 · Other participants";
-  if (step.startsWith("MO08")) return "MO-08 · Confirmation";
-  if (step === "STOPPED") return "Matter Opening · Professional follow-up required";
-  return "Matter Opening · Confirmed";
-}
-
-export function getProgress(step: OpeningStep): number {
-  if (step.startsWith("MO01")) return 12;
-  if (step.startsWith("MO02")) return 25;
-  if (step.startsWith("MO03")) return 38;
-  if (step === "MO04_TIMING") return 50;
-  if (step.startsWith("MO05")) return 62;
-  if (step.startsWith("MO06")) return 75;
-  if (step === "MO07_PARTICIPANTS") return 87;
-  if (step.startsWith("MO08")) return 95;
-  if (step === "CONFIRMED") return 100;
-  return 50;
-}
-
-function mergePriorityDetail(
-  existing: MatterOpeningRecord["priority_details"],
-  detail: { outcome: OutcomeCode; detail: string },
-) {
-  return [...existing.filter((item) => item.outcome !== detail.outcome), detail];
-}
-
-function classificationFromStatus(
+function classificationFor(
   status: MatterOpeningRecord["current_plan_status"],
 ): MatterOpeningRecord["matter_classification"] {
   if (status === "no_existing_plan") return "NEW_PLAN";
@@ -153,252 +150,310 @@ function classificationFromStatus(
   return "PLAN_REVIEW";
 }
 
-function appendUnique<T>(left: T[], right: T[] | null): T[] {
-  if (!right) return left;
-  return Array.from(new Set([...left, ...right]));
+function replacePriorityDetail(
+  record: MatterOpeningRecord,
+  detail: NonNullable<InterpretationPatch["priority_detail"]>,
+) {
+  return [
+    ...record.priority_details.filter((item) => item.outcome !== detail.outcome),
+    detail,
+  ];
 }
 
-function applyPatchForStep(
+function mergeFlags(current: string[], incoming: string[] | null) {
+  return incoming ? [...new Set([...current, ...incoming])] : current;
+}
+
+function applyStepPatch(
   record: MatterOpeningRecord,
-  state: WorkflowState,
-  interpretation: Interpretation,
+  step: OpeningStep,
+  patch: InterpretationPatch,
 ): MatterOpeningRecord {
-  const patch = interpretation.patch;
-  const next = structuredClone(record);
-
-  if (state.step === "MO01_OUTCOMES") {
-    if (patch.desired_outcomes) next.desired_outcomes = patch.desired_outcomes;
-    if (patch.principal_definition_of_success) {
-      next.principal_definition_of_success = patch.principal_definition_of_success;
+  switch (step) {
+    case "MO01_OUTCOMES":
+      return {
+        ...record,
+        desired_outcomes: patch.desired_outcomes ?? record.desired_outcomes,
+        top_three_priorities:
+          patch.top_three_priorities ?? record.top_three_priorities,
+        principal_definition_of_success:
+          patch.principal_definition_of_success ??
+          record.principal_definition_of_success,
+      };
+    case "MO01_PRIORITIES":
+      return {
+        ...record,
+        top_three_priorities:
+          patch.top_three_priorities ?? record.top_three_priorities,
+      };
+    case "MO01_GOAL_FOLLOWUP":
+      return patch.priority_detail
+        ? {
+            ...record,
+            priority_details: replacePriorityDetail(record, patch.priority_detail),
+          }
+        : record;
+    case "MO02_PEOPLE":
+    case "MO02_CIRCUMSTANCES":
+      return {
+        ...record,
+        people_and_interests_snapshot:
+          patch.people_and_interests_snapshot ??
+          record.people_and_interests_snapshot,
+        people_circumstance_flags:
+          patch.people_circumstance_flags ?? record.people_circumstance_flags,
+      };
+    case "MO03_CURRENT_PLAN": {
+      const status = patch.current_plan_status ?? record.current_plan_status;
+      return {
+        ...record,
+        current_plan_status: status,
+        current_plan_snapshot:
+          patch.current_plan_snapshot ?? record.current_plan_snapshot,
+        matter_classification: classificationFor(status),
+      };
     }
-  } else if (state.step === "MO01_PRIORITIES") {
-    if (patch.top_three_priorities) {
-      next.top_three_priorities = patch.top_three_priorities;
-    }
-  } else if (state.step === "MO01_GOAL_FOLLOWUP") {
-    if (patch.priority_detail) {
-      next.priority_details = mergePriorityDetail(
-        next.priority_details,
-        patch.priority_detail,
-      );
-    }
-  } else if (state.step === "MO02_PEOPLE") {
-    if (patch.people_and_interests_snapshot) {
-      next.people_and_interests_snapshot = patch.people_and_interests_snapshot;
-    }
-    next.people_circumstance_flags = appendUnique(
-      next.people_circumstance_flags,
-      patch.people_circumstance_flags,
-    );
-  } else if (state.step === "MO02_CIRCUMSTANCES") {
-    next.people_circumstance_flags = appendUnique(
-      next.people_circumstance_flags,
-      patch.people_circumstance_flags,
-    );
-  } else if (state.step === "MO03_CURRENT_PLAN") {
-    if (patch.current_plan_status) {
-      next.current_plan_status = patch.current_plan_status;
-      next.matter_classification = classificationFromStatus(
-        patch.current_plan_status,
-      );
-    }
-    if (patch.current_plan_snapshot) {
-      next.current_plan_snapshot = patch.current_plan_snapshot;
-    }
-  } else if (state.step === "MO03_PLAN_DETAILS") {
-    if (patch.current_plan_snapshot) {
-      next.current_plan_snapshot = patch.current_plan_snapshot;
-    }
-  } else if (state.step === "MO03_CHANGES") {
-    if (patch.changes_since_current_plan) {
-      next.changes_since_current_plan = patch.changes_since_current_plan;
-    }
-  } else if (state.step === "MO04_TIMING") {
-    next.timing_event_or_deadline = {
-      reason: patch.timing_reason ?? next.timing_event_or_deadline.reason,
-      event: patch.timing_event ?? next.timing_event_or_deadline.event,
-      date: patch.timing_date ?? next.timing_event_or_deadline.date,
-      importance:
-        patch.timing_importance ?? next.timing_event_or_deadline.importance,
-    };
-  } else if (
-    state.step === "MO05_FOOTPRINT" ||
-    state.step === "MO05_COMPLEXITIES"
-  ) {
-    next.geographic_and_complexity_flags = appendUnique(
-      next.geographic_and_complexity_flags,
-      patch.geographic_and_complexity_flags,
-    );
-  } else if (
-    state.step === "MO06_CONTACTS" ||
-    state.step === "MO06_CONTACTS_MORE"
-  ) {
-    if (patch.professional_and_family_contacts) {
-      next.professional_and_family_contacts = [
-        ...next.professional_and_family_contacts,
-        ...patch.professional_and_family_contacts,
-      ];
-    }
-    next.missing_contacts = appendUnique(
-      next.missing_contacts,
-      patch.missing_contacts,
-    );
-  } else if (state.step === "MO07_PARTICIPANTS") {
-    if (patch.other_participants) {
-      next.other_participants = patch.other_participants;
-    }
-  } else if (state.step === "MO08_HOUSE_IN_ORDER") {
-    if (patch.house_in_order_concern) {
-      next.house_in_order_concern = patch.house_in_order_concern;
-    }
-  } else if (state.step === "MO08_CONFIRM") {
-    if (patch.geographic_and_complexity_flags) {
-      next.geographic_and_complexity_flags =
-        patch.geographic_and_complexity_flags;
-    }
-    if (patch.house_in_order_concern) {
-      next.house_in_order_concern = patch.house_in_order_concern;
-    }
-    if (patch.people_and_interests_snapshot) {
-      next.people_and_interests_snapshot = patch.people_and_interests_snapshot;
-    }
-    if (patch.current_plan_snapshot) {
-      next.current_plan_snapshot = patch.current_plan_snapshot;
-    }
-    if (patch.single_next_action) {
-      next.single_next_action = patch.single_next_action;
-    }
+    case "MO03_PLAN_DETAILS":
+      return {
+        ...record,
+        current_plan_snapshot:
+          patch.current_plan_snapshot ?? record.current_plan_snapshot,
+      };
+    case "MO03_CHANGES":
+      return {
+        ...record,
+        changes_since_current_plan:
+          patch.changes_since_current_plan ?? record.changes_since_current_plan,
+      };
+    case "MO04_TIMING":
+      return {
+        ...record,
+        timing_event_or_deadline: {
+          reason: patch.timing_reason ?? record.timing_event_or_deadline.reason,
+          event: patch.timing_event ?? record.timing_event_or_deadline.event,
+          date: patch.timing_date ?? record.timing_event_or_deadline.date,
+          importance:
+            patch.timing_importance ??
+            record.timing_event_or_deadline.importance,
+        },
+      };
+    case "MO05_FOOTPRINT":
+    case "MO05_COMPLEXITY":
+      return {
+        ...record,
+        geographic_and_complexity_flags: mergeFlags(
+          record.geographic_and_complexity_flags,
+          patch.geographic_and_complexity_flags,
+        ),
+      };
+    case "MO06_CONTACTS":
+      return {
+        ...record,
+        professional_and_family_contacts:
+          patch.professional_and_family_contacts ??
+          record.professional_and_family_contacts,
+        missing_contacts: patch.missing_contacts ?? record.missing_contacts,
+        other_participants:
+          patch.other_participants ?? record.other_participants,
+      };
+    case "MO08_HOUSE_IN_ORDER":
+      return {
+        ...record,
+        house_in_order_concern:
+          patch.house_in_order_concern ?? record.house_in_order_concern,
+      };
+    default:
+      return record;
   }
-
-  if (interpretation.stop.triggered) {
-    next.matter_status = "EXPEDITED_EVENT";
-  }
-
-  const validated = MatterOpeningRecordSchema.parse(next);
-  return state.step === "MO08_HOUSE_IN_ORDER"
-    ? prepareMatterOpeningForConfirmation(validated)
-    : validated;
 }
 
-function nextState(
-  record: MatterOpeningRecord,
-  state: WorkflowState,
-  interpretation: Interpretation,
-): WorkflowState {
-  const next: WorkflowState = {
-    ...state,
-    accepted_turns: state.accepted_turns + 1,
-  };
-
-  if (interpretation.stop.triggered) {
-    next.step = "STOPPED";
-    next.stop = {
-      category: interpretation.stop.category ?? "unresolved_dependency",
-      reason:
-        interpretation.stop.reason ??
-        "A consequential event requires human or professional follow-up.",
-      immediate_action:
-        interpretation.stop.immediate_action ??
-        "Contact the appropriate attorney or professional before continuing.",
-    };
-    return WorkflowStateSchema.parse(next);
-  }
-
-  switch (state.step) {
+function nextStep(record: MatterOpeningRecord, step: OpeningStep): OpeningStep {
+  switch (step) {
     case "MO01_OUTCOMES":
-      next.step = "MO01_PRIORITIES";
-      break;
-    case "MO01_PRIORITIES": {
-      const queue = [...record.top_three_priorities];
-      next.active_goal_followup = queue.shift() ?? null;
-      next.goal_followup_queue = queue;
-      next.step = next.active_goal_followup
+      return record.top_three_priorities.length === 3
         ? "MO01_GOAL_FOLLOWUP"
-        : "MO02_PEOPLE";
-      break;
-    }
-    case "MO01_GOAL_FOLLOWUP": {
-      const queue = [...state.goal_followup_queue];
-      next.active_goal_followup = queue.shift() ?? null;
-      next.goal_followup_queue = queue;
-      next.step = next.active_goal_followup
-        ? "MO01_GOAL_FOLLOWUP"
-        : "MO02_PEOPLE";
-      break;
-    }
+        : "MO01_PRIORITIES";
+    case "MO01_PRIORITIES":
+      return nextPriority(record) ? "MO01_GOAL_FOLLOWUP" : "MO02_PEOPLE";
+    case "MO01_GOAL_FOLLOWUP":
+      return nextPriority(record) ? "MO01_GOAL_FOLLOWUP" : "MO02_PEOPLE";
     case "MO02_PEOPLE":
-      next.step = interpretation.signals.people_followup_required
+      return record.people_circumstance_flags.length
         ? "MO02_CIRCUMSTANCES"
         : "MO03_CURRENT_PLAN";
-      break;
     case "MO02_CIRCUMSTANCES":
-      next.step = "MO03_CURRENT_PLAN";
-      break;
+      return "MO03_CURRENT_PLAN";
     case "MO03_CURRENT_PLAN":
-      next.step = interpretation.signals.current_plan_exists
-        ? "MO03_PLAN_DETAILS"
-        : "MO04_TIMING";
-      break;
+      return record.current_plan_status === "no_existing_plan"
+        ? "MO04_TIMING"
+        : "MO03_PLAN_DETAILS";
     case "MO03_PLAN_DETAILS":
-      next.step = "MO03_CHANGES";
-      break;
+      return "MO03_CHANGES";
     case "MO03_CHANGES":
-      next.step = "MO04_TIMING";
-      break;
+      return "MO04_TIMING";
     case "MO04_TIMING":
-      next.step = "MO05_FOOTPRINT";
-      break;
+      return "MO05_FOOTPRINT";
     case "MO05_FOOTPRINT":
-      next.step = "MO05_COMPLEXITIES";
-      break;
-    case "MO05_COMPLEXITIES":
-      next.step = "MO06_CONTACTS";
-      break;
+      return "MO05_COMPLEXITY";
+    case "MO05_COMPLEXITY":
+      return "MO06_CONTACTS";
     case "MO06_CONTACTS":
-    case "MO06_CONTACTS_MORE":
-      next.step = interpretation.signals.contacts_complete
-        ? "MO07_PARTICIPANTS"
-        : "MO06_CONTACTS_MORE";
-      break;
-    case "MO07_PARTICIPANTS":
-      next.step = "MO08_HOUSE_IN_ORDER";
-      break;
+      return "MO08_HOUSE_IN_ORDER";
     case "MO08_HOUSE_IN_ORDER":
-      next.step = "MO08_CONFIRM";
-      break;
-    case "MO08_CONFIRM":
-      next.step = "MO08_CONFIRM";
-      break;
+      return "MO08_CONFIRM";
     default:
-      break;
+      return step;
   }
-
-  return WorkflowStateSchema.parse(next);
 }
 
 export function applyAcceptedInterpretation(
   record: MatterOpeningRecord,
   state: WorkflowState,
   interpretation: Interpretation,
-): WorkflowResult {
-  if (!interpretation.accepted || interpretation.needs_clarification) {
-    throw new Error(
-      interpretation.clarification_question ??
-        "The response needs clarification before it can be saved.",
-    );
+) {
+  if (state.step === "MO08_CONFIRM") {
+    throw new Error("Planning Summary corrections require the correction operation.");
+  }
+  if (state.step === "BLUEPRINT_READY" || state.step === "STOPPED") {
+    throw new Error("This Matter Opening cannot accept another turn.");
   }
 
-  const updatedRecord = applyPatchForStep(record, state, interpretation);
-  const updatedState = nextState(updatedRecord, state, interpretation);
-  const nextQuestion = getCanonicalQuestion(updatedState, updatedRecord);
-  const acknowledgement = interpretation.acknowledgement.trim();
+  if (interpretation.outcome === "clarification") {
+    if (!interpretation.clarification_question) {
+      throw new Error("A clarification outcome requires a question.");
+    }
+    return {
+      record,
+      state: {
+        ...state,
+        clarification: { question: interpretation.clarification_question },
+      },
+      assistantMessage: interpretation.clarification_question,
+    };
+  }
 
+  if (interpretation.outcome === "stop") {
+    if (!interpretation.stop) throw new Error("A stop outcome requires stop details.");
+    const expedited = interpretation.stop.category === "expedited_event";
+    return {
+      record: {
+        ...record,
+        matter_status: expedited
+          ? ("EXPEDITED_EVENT" as const)
+          : ("MANDATORY_STOP" as const),
+      },
+      state: {
+        step: "STOPPED" as const,
+        clarification: null,
+        stop: interpretation.stop,
+      },
+      assistantMessage: interpretation.stop.immediate_action,
+    };
+  }
+
+  const updatedRecord = applyStepPatch(record, state.step, interpretation.patch);
+  const updatedState: WorkflowState = {
+    step: nextStep(updatedRecord, state.step),
+    clarification: null,
+    stop: null,
+  };
   return {
     record: updatedRecord,
     state: updatedState,
-    assistantMessage: acknowledgement
-      ? `${acknowledgement}\n\n${nextQuestion}`
-      : nextQuestion,
+    assistantMessage: interpretation.acknowledgement,
+  };
+}
+
+export function applyPlanningSummaryCorrection(
+  record: MatterOpeningRecord,
+  state: WorkflowState,
+  correction: PlanningSummaryCorrection,
+) {
+  if (state.step !== "MO08_CONFIRM") {
+    throw new Error("Planning Summary corrections are available only before confirmation.");
+  }
+  if (correction.outcome === "clarification") {
+    if (!correction.clarification_question) {
+      throw new Error("A clarification outcome requires a question.");
+    }
+    const missingPriority = nextPriority(record);
+    const clarificationQuestion = missingPriority
+      ? priorityFollowupQuestion(missingPriority)
+      : correction.clarification_question;
+    return {
+      record,
+      state: {
+        ...state,
+        clarification: { question: clarificationQuestion },
+      },
+      assistantMessage: clarificationQuestion,
+      changed: false,
+    };
+  }
+
+  const patch = correction.patch;
+  const currentPlanStatus = patch.current_plan_status ?? record.current_plan_status;
+  const topThreePriorities =
+    patch.top_three_priorities ?? record.top_three_priorities;
+  const retainedPriorityDetails = record.priority_details.filter((detail) =>
+    topThreePriorities.includes(detail.outcome),
+  );
+  const priorityDetails =
+    patch.priority_detail && topThreePriorities.includes(patch.priority_detail.outcome)
+      ? replacePriorityDetail(
+          { ...record, priority_details: retainedPriorityDetails },
+          patch.priority_detail,
+        )
+      : retainedPriorityDetails;
+  const corrected: MatterOpeningRecord = {
+    ...record,
+    desired_outcomes: patch.desired_outcomes ?? record.desired_outcomes,
+    top_three_priorities: topThreePriorities,
+    priority_details: priorityDetails,
+    principal_definition_of_success:
+      patch.principal_definition_of_success ??
+      record.principal_definition_of_success,
+    people_and_interests_snapshot:
+      patch.people_and_interests_snapshot ?? record.people_and_interests_snapshot,
+    people_circumstance_flags:
+      patch.people_circumstance_flags ?? record.people_circumstance_flags,
+    current_plan_status: currentPlanStatus,
+    current_plan_snapshot:
+      patch.current_plan_snapshot ?? record.current_plan_snapshot,
+    changes_since_current_plan:
+      patch.changes_since_current_plan ?? record.changes_since_current_plan,
+    timing_event_or_deadline: {
+      reason: patch.timing_reason ?? record.timing_event_or_deadline.reason,
+      event: patch.timing_event ?? record.timing_event_or_deadline.event,
+      date: patch.timing_date ?? record.timing_event_or_deadline.date,
+      importance:
+        patch.timing_importance ?? record.timing_event_or_deadline.importance,
+    },
+    geographic_and_complexity_flags:
+      patch.geographic_and_complexity_flags ??
+      record.geographic_and_complexity_flags,
+    professional_and_family_contacts:
+      patch.professional_and_family_contacts ??
+      record.professional_and_family_contacts,
+    missing_contacts: patch.missing_contacts ?? record.missing_contacts,
+    other_participants: patch.other_participants ?? record.other_participants,
+    matter_classification: classificationFor(currentPlanStatus),
+  };
+  const missingPriority = nextPriority(corrected);
+  const clarificationQuestion = missingPriority
+    ? priorityFollowupQuestion(missingPriority)
+    : null;
+
+  return {
+    record: corrected,
+    state: {
+      ...state,
+      clarification: clarificationQuestion
+        ? { question: clarificationQuestion }
+        : null,
+    },
+    assistantMessage: clarificationQuestion ?? correction.acknowledgement,
+    changed: true,
   };
 }
 
@@ -406,32 +461,27 @@ export function confirmOpening(
   record: MatterOpeningRecord,
   state: WorkflowState,
   confirmedAt = new Date().toISOString(),
-): WorkflowResult {
-  if (state.step !== "MO08_CONFIRM") {
-    throw new Error("Matter Opening cannot be confirmed before the review gate.");
-  }
+) {
   if (
-    record.desired_outcomes.length === 0 ||
-    record.top_three_priorities.length !== 3 ||
-    record.principal_definition_of_success === "unknown" ||
-    record.current_plan_snapshot === "unknown" ||
-    record.selected_discovery_path === "unknown" ||
-    record.single_next_action === "unknown"
+    state.step !== "MO08_CONFIRM" ||
+    state.clarification !== null ||
+    nextPriority(record)
   ) {
-    throw new Error("The Matter Opening exit gate is not complete.");
+    throw new Error("The Planning Summary confirmation gate is not complete.");
   }
-
-  const updatedRecord = MatterOpeningRecordSchema.parse({
-    ...record,
-    principal_confirmed: "yes",
-    confirmation_date: confirmedAt,
-  });
-  const updatedState = WorkflowStateSchema.parse({ ...state, step: "CONFIRMED" });
-
   return {
-    record: updatedRecord,
-    state: updatedState,
+    record: {
+      ...record,
+      matter_status: "BLUEPRINT_READY" as const,
+      principal_confirmed: "yes" as const,
+      confirmation_date: confirmedAt,
+    },
+    state: {
+      step: "BLUEPRINT_READY" as const,
+      clarification: null,
+      stop: null,
+    },
     assistantMessage:
-      "Matter Opening is confirmed and saved. This Slice 1 experience stops here before any Estate Blueprint stage begins.",
+      "Your Planning Summary is confirmed. Your Estate Blueprint will begin from this planning baseline.",
   };
 }

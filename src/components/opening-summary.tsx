@@ -1,40 +1,37 @@
 import type { MatterOpeningRecord } from "@/lib/domain/matter-opening";
-import { OUTCOME_LABELS } from "@/lib/domain/matter-opening";
-
-function valueOrUnknown(value: string) {
-  return value && value !== "unknown" ? value : "Not yet known";
-}
+import { buildPrincipalPlanningSummary } from "@/lib/domain/planning-summary";
 
 export function OpeningSummary({ record }: { record: MatterOpeningRecord }) {
+  const summary = buildPrincipalPlanningSummary(record);
   return (
     <div className="summary-grid">
       <section>
-        <h3>Desired outcomes</h3>
+        <h3>What you want to accomplish</h3>
         <ul>
-          {record.desired_outcomes.map((outcome) => (
-            <li key={outcome}>{OUTCOME_LABELS[outcome]}</li>
+          {summary.desiredOutcomes.map((outcome) => (
+            <li key={outcome}>{outcome}</li>
           ))}
         </ul>
       </section>
       <section>
         <h3>Top three priorities</h3>
         <ol>
-          {record.top_three_priorities.map((outcome) => (
-            <li key={outcome}>{OUTCOME_LABELS[outcome]}</li>
+          {summary.topPriorities.map((outcome) => (
+            <li key={outcome}>{outcome}</li>
           ))}
         </ol>
       </section>
       <section className="summary-wide">
-        <h3>Definition of success</h3>
-        <p>{valueOrUnknown(record.principal_definition_of_success)}</p>
+        <h3>Your definition of success</h3>
+        <p>{summary.successDefinition}</p>
       </section>
       <section className="summary-wide">
-        <h3>Priority details</h3>
-        {record.priority_details.length ? (
+        <h3>Priority context</h3>
+        {summary.priorityContext.length ? (
           <dl className="detail-list">
-            {record.priority_details.map((item) => (
-              <div key={item.outcome}>
-                <dt>{OUTCOME_LABELS[item.outcome]}</dt>
+            {summary.priorityContext.map((item) => (
+              <div key={`${item.outcome}-${item.detail}`}>
+                <dt>{item.outcome}</dt>
                 <dd>{item.detail}</dd>
               </div>
             ))}
@@ -44,39 +41,49 @@ export function OpeningSummary({ record }: { record: MatterOpeningRecord }) {
         )}
       </section>
       <section>
-        <h3>People and interests</h3>
-        <p>{valueOrUnknown(record.people_and_interests_snapshot)}</p>
-        {record.people_circumstance_flags.length > 0 && (
+        <h3>People and interests to protect</h3>
+        <p>{summary.peopleAndInterests}</p>
+        {summary.peopleFlags.length > 0 && (
           <p className="summary-note">
-            Flags: {record.people_circumstance_flags.join(", ")}
+            Flags: {summary.peopleFlags.join(", ")}
           </p>
         )}
       </section>
       <section>
-        <h3>Current plan</h3>
-        <p>{valueOrUnknown(record.current_plan_snapshot)}</p>
+        <h3>Current planning context</h3>
+        <p>{summary.currentPlanStatus}</p>
+        <p>{summary.currentPlanSnapshot}</p>
+      </section>
+      <section>
+        <h3>Known planning changes</h3>
+        <ul>
+          {summary.knownChanges.map((change) => (
+            <li key={change}>{change}</li>
+          ))}
+        </ul>
+      </section>
+      <section>
+        <h3>Timing and urgency</h3>
+        <p>{summary.timing.reason}</p>
         <p className="summary-note">
-          Classification: {record.matter_classification.replaceAll("_", " ")}
+          Event: {summary.timing.event}
+        </p>
+        <p className="summary-note">
+          Date: {summary.timing.date}
+        </p>
+        <p className="summary-note">
+          Importance: {summary.timing.importance}
         </p>
       </section>
       <section>
-        <h3>Timing</h3>
-        <p>{valueOrUnknown(record.timing_event_or_deadline.reason)}</p>
-        <p className="summary-note">
-          Event: {valueOrUnknown(record.timing_event_or_deadline.event)}
-        </p>
-      </section>
-      <section>
-        <h3>Geographic and complexity footprint</h3>
+        <h3>Timing and material complexity</h3>
         <p>
-          {record.geographic_and_complexity_flags.length
-            ? record.geographic_and_complexity_flags.join("; ")
-            : "Not yet known"}
+          {summary.complexityFlags.length ? summary.complexityFlags.join("; ") : "Not yet known"}
         </p>
       </section>
       <section className="summary-wide">
-        <h3>Estate team and family contacts</h3>
-        {record.professional_and_family_contacts.length ? (
+        <h3>Contacts and team</h3>
+        {summary.contacts.length ? (
           <div className="table-wrap">
             <table>
               <thead>
@@ -84,18 +91,14 @@ export function OpeningSummary({ record }: { record: MatterOpeningRecord }) {
                   <th>Name</th>
                   <th>Firm</th>
                   <th>Role</th>
-                  <th>Contact</th>
                 </tr>
               </thead>
               <tbody>
-                {record.professional_and_family_contacts.map((contact, index) => (
+                {summary.contacts.map((contact, index) => (
                   <tr key={`${contact.name}-${index}`}>
                     <td>{contact.name}</td>
                     <td>{contact.firm}</td>
-                    <td>{contact.estate_role}</td>
-                    <td>
-                      {contact.email} · {contact.telephone}
-                    </td>
+                    <td>{contact.role}</td>
                   </tr>
                 ))}
               </tbody>
@@ -103,31 +106,23 @@ export function OpeningSummary({ record }: { record: MatterOpeningRecord }) {
           </div>
         ) : (
           <p>
-            {record.missing_contacts.length
-              ? record.missing_contacts.join(", ")
+            {summary.missingContacts.length
+              ? summary.missingContacts.join(", ")
               : "No contact recorded"}
           </p>
         )}
       </section>
       <section>
-        <h3>Other participants</h3>
+        <h3>People who should help</h3>
         <p>
-          {record.other_participants.length
-            ? record.other_participants.map((person) => person.name).join("; ")
+          {summary.participants.length
+            ? summary.participants.join("; ")
             : "None identified"}
         </p>
       </section>
-      <section>
-        <h3>House-in-order concern</h3>
-        <p>{valueOrUnknown(record.house_in_order_concern)}</p>
-      </section>
-      <section>
-        <h3>Recommended discovery path</h3>
-        <p>{valueOrUnknown(record.selected_discovery_path)}</p>
-      </section>
-      <section>
-        <h3>Single next action</h3>
-        <p>{valueOrUnknown(record.single_next_action)}</p>
+      <section className="summary-wide">
+        <h3>Recommended next step</h3>
+        <p>{summary.recommendedNextStep}</p>
       </section>
     </div>
   );

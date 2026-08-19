@@ -82,7 +82,7 @@ export function HomeExperience() {
   if (!session?.user) {
     return (
       <main className="centered-state" aria-live="polite">
-        Loading your matter…
+        Loading your workspace…
       </main>
     );
   }
@@ -94,26 +94,29 @@ export function HomeExperience() {
         {!session.betaAcknowledged ? (
           <section className="notice-card" aria-labelledby="beta-title">
             <div className="eyebrow">Before you begin</div>
-            <h1 id="beta-title">Controlled educational beta</h1>
+            <h1 id="beta-title">Private estate-planning workspace</h1>
             <div className="notice-copy">
               <p>
-                This product organizes information and provides planning
-                recommendations within the approved Estate Coordinator boundary.
-                It is not legal or tax advice.
+                You are starting a guided planning conversation to establish your
+                priorities, people, timeline, and planning context before Blueprint
+                recommendations begin.
               </p>
-              <ul>
-                <li>Use synthetic test facts only in this Slice 1 build.</li>
+                <p>This is not legal, tax, or investment advice.</p>
+                <ul>
+                  <li>
+                    Use representative planning context and avoid sensitive personal
+                    facts unless the controlled-beta policy explicitly approves them.
+                  </li>
                 <li>
                   Do not enter passwords, private keys, seed phrases, or full
                   account identifiers.
                 </li>
                 <li>
-                  Existing personal estate-planning documents are not reviewed
-                  in this launch slice.
+                  Existing estate-planning documents are not reviewed in this phase.
                 </li>
                 <li>
-                  Synthetic development records remain until the test data is
-                  reset; no real-student retention policy is active.
+                  Your saved planning information is retained under the cohort
+                  privacy controls.
                 </li>
               </ul>
             </div>
@@ -123,7 +126,9 @@ export function HomeExperience() {
                 checked={accepted}
                 onChange={(event) => setAccepted(event.target.checked)}
               />
-              <span>I understand and agree to use synthetic test data only.</span>
+              <span>
+                I understand the process and privacy terms, and want to continue.
+              </span>
             </label>
             <button
               className="button button-primary"
@@ -138,8 +143,11 @@ export function HomeExperience() {
             <div className="home-heading">
               <div>
                 <div className="eyebrow">Your private workspace</div>
-                <h1 id="home-title">Matter home</h1>
-                <p>Resume from the last accepted answer or open your matter.</p>
+                <h1 id="home-title">Estate Planning Priorities</h1>
+                <p>
+                  Resume from your last saved answer, or start a new planning
+                  conversation.
+                </p>
               </div>
               {matters.length === 0 && (
                 <button
@@ -147,7 +155,7 @@ export function HomeExperience() {
                   onClick={startMatter}
                   disabled={busy}
                 >
-                  {busy ? "Opening…" : "Start Matter Opening"}
+                  {busy ? "Opening…" : "Start planning priorities"}
                 </button>
               )}
             </div>
@@ -157,8 +165,8 @@ export function HomeExperience() {
                 <article className="matter-card" key={matter.id}>
                   <div>
                     <span className={`status-pill status-${matter.status}`}>
-                      {matter.status === "opening_confirmed"
-                        ? "Opening confirmed"
+                      {matter.status === "blueprint_ready"
+                        ? "Ready for Estate Blueprint"
                         : matter.status === "stopped"
                           ? "Professional follow-up required"
                           : "In progress"}
@@ -176,12 +184,14 @@ export function HomeExperience() {
                       aria-valuemin={0}
                       aria-valuemax={100}
                       aria-valuenow={matter.progress}
-                      aria-label="Matter Opening progress"
+                      aria-label="Planning conversation progress"
                     >
                       <span style={{ width: `${matter.progress}%` }} />
                     </div>
                     <Link className="button button-secondary" href={`/matter/${matter.id}`}>
-                      {matter.openingConfirmedAt ? "View confirmed record" : "Resume matter"}
+                      {matter.openingConfirmedAt
+                        ? "View confirmed planning baseline"
+                        : "Resume conversation"}
                     </Link>
                   </div>
                 </article>
