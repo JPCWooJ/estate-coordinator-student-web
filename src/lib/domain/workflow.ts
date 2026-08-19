@@ -91,11 +91,9 @@ export function getCanonicalQuestion(
     case "MO05_COMPLEXITIES":
       return "Are there any trusts, businesses, foreign connections, digital assets, major charitable plans, or other complexities you already know should be considered?";
     case "MO06_CONTACTS":
-      return "Who should your family contact when estate-planning or estate-administration help is needed? You may name a contact or say that a contact is needed.";
+      return "Who should be involved or available to help with your estate plan now or in the future? This might include attorneys, tax or financial professionals, assistants, trusted family members, or anyone else who should know what to do.";
     case "MO06_CONTACTS_MORE":
-      return "Is there another professional or family contact to add? You may add one contact or say you are ready to continue.";
-    case "MO07_PARTICIPANTS":
-      return "Who else should participate in creating, maintaining, or eventually using this plan?";
+      return "Is there another person or professional to add, or are you ready to continue?";
     case "MO08_HOUSE_IN_ORDER":
       return "What would you need to see, understand, or have confirmed to feel confident your plan is complete, current, and working as intended?";
     case "MO08_CONFIRM":
@@ -118,8 +116,7 @@ export function getStepLabel(step: OpeningStep): string {
   if (step.startsWith("MO03")) return "Current planning context";
   if (step === "MO04_TIMING") return "Timing and urgency";
   if (step.startsWith("MO05")) return "Footprint and complexity";
-  if (step.startsWith("MO06")) return "Contact details";
-  if (step === "MO07_PARTICIPANTS") return "People and participants";
+  if (step.startsWith("MO06")) return "People who should help";
   if (step.startsWith("MO08")) return "Planning Summary";
   if (step === "STOPPED") return "Professional follow-up required";
   return "Planning Summary confirmed";
@@ -131,8 +128,7 @@ export function getProgress(step: OpeningStep): number {
   if (step.startsWith("MO03")) return 38;
   if (step === "MO04_TIMING") return 50;
   if (step.startsWith("MO05")) return 62;
-  if (step.startsWith("MO06")) return 75;
-  if (step === "MO07_PARTICIPANTS") return 87;
+  if (step.startsWith("MO06")) return 82;
   if (step.startsWith("MO08")) return 95;
   if (step === "CONFIRMED") return 100;
   return 50;
@@ -249,9 +245,11 @@ function applyPatchForStep(
       next.missing_contacts,
       patch.missing_contacts,
     );
-  } else if (state.step === "MO07_PARTICIPANTS") {
     if (patch.other_participants) {
-      next.other_participants = patch.other_participants;
+      next.other_participants = [
+        ...next.other_participants,
+        ...patch.other_participants,
+      ];
     }
   } else if (state.step === "MO08_HOUSE_IN_ORDER") {
     if (patch.house_in_order_concern) {
@@ -370,11 +368,8 @@ function nextState(
     case "MO06_CONTACTS":
     case "MO06_CONTACTS_MORE":
       next.step = interpretation.signals.contacts_complete
-        ? "MO07_PARTICIPANTS"
+        ? "MO08_HOUSE_IN_ORDER"
         : "MO06_CONTACTS_MORE";
-      break;
-    case "MO07_PARTICIPANTS":
-      next.step = "MO08_HOUSE_IN_ORDER";
       break;
     case "MO08_HOUSE_IN_ORDER":
       next.step = "MO08_CONFIRM";
@@ -445,7 +440,6 @@ export function confirmOpening(
     record: updatedRecord,
     state: updatedState,
     assistantMessage:
-      "Your planning summary is confirmed and saved. Next, you will begin Building your Estate Blueprint from what you confirmed here.",
+      "Your planning summary is confirmed and saved. Estate Blueprint is the next stage and will use the information you confirmed here.",
   };
 }
-
