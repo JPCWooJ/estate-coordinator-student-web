@@ -170,23 +170,29 @@ describe("Matter Opening deterministic workflow", () => {
     const planDetails = advance(
       existingPlan.record,
       existingPlan.state,
-      interpretation("MO03_PLAN_DETAILS", {
-        current_plan_snapshot: "Synthetic will and trust completed in 2020.",
-      }, { current_plan_exists: true }),
+      interpretation(
+        "MO03_PLAN_DETAILS",
+        {
+          current_plan_snapshot: "Synthetic will and trust completed in 2020.",
+        },
+        { current_plan_exists: true },
+      ),
     );
     expect(planDetails.state.step).toBe("MO03_CHANGES");
 
     const changes = advance(
       planDetails.record,
       planDetails.state,
-      interpretation("MO03_CHANGES", {
-        changes_since_current_plan: ["Synthetic relocation"],
-      }, { current_plan_exists: true }),
+      interpretation(
+        "MO03_CHANGES",
+        { changes_since_current_plan: ["Synthetic relocation"] },
+        { current_plan_exists: true },
+      ),
     );
     expect(changes.state.step).toBe("MO04_TIMING");
   });
 
-  it("runs only the triggered people and contact follow-up branches", () => {
+  it("runs triggered people follow-ups and consolidates contacts and participants into MO-06", () => {
     const record = createInitialRecord("aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa");
     const peopleState = {
       ...createInitialWorkflowState(),
@@ -241,17 +247,26 @@ describe("Matter Opening deterministic workflow", () => {
     expect(contact.state.step).toBe("MO06_CONTACTS_MORE");
     expect(contact.record.professional_and_family_contacts).toHaveLength(1);
 
-    const contactComplete = advance(
+    const complete = advance(
       contact.record,
       contact.state,
       interpretation(
         "MO06_CONTACTS_MORE",
-        { missing_contacts: ["CONTACT_NEEDED"] },
+        {
+          other_participants: [
+            {
+              name: "Synthetic Spouse",
+              relationship: "spouse",
+              intended_role: "planning participant",
+              involvement_timing: "now",
+            },
+          ],
+        },
         { contacts_complete: true },
       ),
     );
-    expect(contactComplete.state.step).toBe("MO07_PARTICIPANTS");
-    expect(contactComplete.record.missing_contacts).toEqual(["CONTACT_NEEDED"]);
+    expect(complete.state.step).toBe("MO08_HOUSE_IN_ORDER");
+    expect(complete.record.other_participants).toHaveLength(1);
   });
 
   it("stops the affected lane for an expedited or mandatory-stop event", () => {
@@ -326,7 +341,8 @@ describe("Matter Opening deterministic workflow", () => {
     expect(result.record.confirmation_date).toBe("2026-08-17T20:00:00.000Z");
   });
 
-  it("creates a planning summary PDF for confirmed Matter Opening records", () => {
+  it("creates a paginated principal-facing planning summary PDF without internal routing fields", () => {
+    const longContext = Array.from({ length: 180 }, (_, index) => `planning detail ${index + 1}`).join(" ");
     const record = prepareMatterOpeningForConfirmation({
       ...createInitialRecord("aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"),
       desired_outcomes: ["intended_transfer", "tax_minimization", "incapacity_readiness"],
@@ -336,7 +352,7 @@ describe("Matter Opening deterministic workflow", () => {
         "tax_minimization",
       ],
       principal_definition_of_success: "Protect the family and keep outcomes practical.",
-      people_and_interests_snapshot: "Spouse and adult children.",
+      people_and_interests_snapshot: longContext,
       current_plan_snapshot: "No existing plan.",
       changes_since_current_plan: ["none"],
       timing_event_or_deadline: {
@@ -348,12 +364,16 @@ describe("Matter Opening deterministic workflow", () => {
       geographic_and_complexity_flags: ["Florida property", "two rental units"],
       professional_and_family_contacts: [],
       other_participants: [],
+      house_in_order_concern: "A clear confirmation that the plan is current.",
     });
 
     const pdf = buildPlanningSummaryPdf(record);
+    const text = pdf.toString("latin1");
 
     expect(pdf.subarray(0, 5).toString()).toBe("%PDF-");
-    expect(pdf.toString("utf8")).toContain("Estate Planning Summary");
+    expect(text).toContain("Estate Planning Summary");
+    expect((text.match(/\/Type \/Page\b/g) ?? []).length).toBeGreaterThan(1);
+    expect(text).not.toContain(record.selected_discovery_path);
+    expect(text).not.toContain(record.matter_classification);
   });
 });
-
