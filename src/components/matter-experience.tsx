@@ -35,6 +35,7 @@ export function MatterExperience({ matterId }: { matterId: string }) {
   const [answer, setAnswer] = useState("");
   const [busy, setBusy] = useState(false);
   const [correcting, setCorrecting] = useState(false);
+  const [interviewStarted, setInterviewStarted] = useState(false);
   const [saveStatus, setSaveStatus] = useState("Loading saved state…");
   const [error, setError] = useState("");
   const pendingTurnKey = useRef<string | null>(null);
@@ -50,6 +51,10 @@ export function MatterExperience({ matterId }: { matterId: string }) {
         }
         setEmail(payload.session.user.email);
         setMatter(payload.matter);
+        setInterviewStarted(
+          payload.matter.workflowState.step !== "MO01_OUTCOMES" ||
+            payload.matter.messages.length > 0,
+        );
         setSaveStatus(
           `Saved ${new Date(payload.matter.savedAt).toLocaleTimeString()}`,
         );
@@ -92,6 +97,7 @@ export function MatterExperience({ matterId }: { matterId: string }) {
     }
     pendingTurnKey.current = null;
     setMatter(data.matter);
+    setInterviewStarted(true);
     setAnswer("");
     setCorrecting(false);
     setSaveStatus(`Saved ${new Date(data.matter.savedAt).toLocaleTimeString()}`);
@@ -126,12 +132,28 @@ export function MatterExperience({ matterId }: { matterId: string }) {
   const isReview = matter.workflowState.step === "MO08_CONFIRM";
   const isStopped = matter.workflowState.step === "STOPPED";
   const isConfirmed = matter.workflowState.step === "CONFIRMED";
+  const lastAssistantMessage = matter.messages.at(-1);
+  const isClarificationMessage =
+    !isConfirmed &&
+    lastAssistantMessage?.role === "assistant" &&
+    lastAssistantMessage.step === matter.workflowState.step &&
+    lastAssistantMessage.content.trim().startsWith("Please");
+  const isStartingInterview =
+    !isReview &&
+    !isStopped &&
+    !isConfirmed &&
+    matter.workflowState.step === "MO01_OUTCOMES" &&
+    !interviewStarted;
   const hideLastAssistant =
     !isConfirmed &&
-    matter.messages.at(-1)?.role === "assistant";
+    lastAssistantMessage?.role === "assistant" &&
+    !isClarificationMessage;
   const visibleMessages = hideLastAssistant
     ? matter.messages.slice(0, -1)
     : matter.messages;
+  const questionText = isClarificationMessage
+    ? lastAssistantMessage.content
+    : matter.currentQuestion;
 
   return (
     <div className="app-shell">
@@ -175,9 +197,13 @@ export function MatterExperience({ matterId }: { matterId: string }) {
             <div className="eyebrow">Planning summary</div>
             <h2 id="confirmed-title">Planning summary confirmed</h2>
             <p>
-              Your planning summary is confirmed and ready to begin the next phase.
-              Next, the product moves into Estate Blueprint with the planning
-              recommendations and profile you approved.
+              Your planning summary is confirmed. Estate Blueprint is the next stage
+              and will be based on the priorities, people, and context you confirmed
+              here.
+            </p>
+            <p>
+              The Blueprint stage is not yet available in this release. You can keep
+              your planning summary and continue when the next stage is deployed.
             </p>
             <OpeningSummary record={matter.record} />
             <div className="review-actions">
@@ -190,7 +216,7 @@ export function MatterExperience({ matterId }: { matterId: string }) {
                 Download planning summary (PDF)
               </a>
               <Link className="button button-primary" href="/home">
-                Continue to Estate Blueprint
+                Return to planning workspace
               </Link>
             </div>
           </section>
@@ -227,14 +253,6 @@ export function MatterExperience({ matterId }: { matterId: string }) {
                     screen.
                   </p>
                   <OpeningSummary record={matter.record} />
-                  <a
-                    className="button button-secondary"
-                    href={`/api/matters/${matterId}/summary-pdf`}
-                    target="_blank"
-                    rel="noreferrer"
-                  >
-                    Download draft summary (PDF)
-                  </a>
                   {!correcting && (
                     <div className="review-actions">
                       <button
@@ -254,14 +272,36 @@ export function MatterExperience({ matterId }: { matterId: string }) {
                     </div>
                   )}
                 </section>
+              ) : isStartingInterview ? (
+                <section className="review-card" aria-labelledby="start-title">
+                  <div className="eyebrow">Before you begin</div>
+                  <h2 id="start-title">Estate Planning Priorities</h2>
+                  <p>
+                    This short guided interview gathers your priorities, people, timing,
+                    and planning context to prepare a reliable foundation for Estate Blueprint.
+                  </p>
+                  <ul>
+                    <li>There are no right or wrong answers.</li>
+                    <li>Use ordinary language and the details you can share.</li>
+                    <li>Most questions expect a practical, concise answer.</li>
+                    <li>We may ask one follow-up if a material role or contact is missing.</li>
+                  </ul>
+                  <button
+                    className="button button-primary"
+                    onClick={() => setInterviewStarted(true)}
+                    style={{ display: "block", margin: "0 auto" }}
+                  >
+                    Begin interview
+                  </button>
+                </section>
               ) : (
                 <article className="active-question" aria-labelledby="active-question-label">
                   <span id="active-question-label">Estate Coordinator</span>
-                  <p>{matter.currentQuestion}</p>
+                  <p>{questionText}</p>
                 </article>
               )}
 
-              {(!isReview || correcting) && (
+              {(!isReview || correcting) && !isStartingInterview && (
                 <form className="composer" onSubmit={submit}>
                   <label htmlFor="answer">
                     {correcting ? "Describe the correction" : "Your response"}
