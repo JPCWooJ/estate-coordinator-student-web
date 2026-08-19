@@ -85,20 +85,21 @@ test("continuous priorities-to-Blueprint handoff saves, clarifies, corrects, and
   ).toBeVisible();
   await expect(page.locator(".error-text")).toHaveText("");
 
-  await page.reload();
-  await expect(
-    page.getByText(
-      "In ordinary language, what are the three most important results you want from your estate plan?",
-      { exact: true },
-    ),
-  ).toBeVisible();
-
   const accepted = await answer(
     page,
     "My top priorities are intended transfer, incapacity readiness, and tax minimization; keep things practical and simple.",
   );
   expect(accepted.matter.workflowState.step).toBe("MO01_GOAL_FOLLOWUP");
   expect(accepted.matter.workflowState.clarification).toBeNull();
+
+  await page.reload();
+  await expect(
+    page.getByText(
+      "Who or what do you most want to benefit, and what transfer outcome do you most want to prevent?",
+      { exact: true },
+    ),
+  ).toBeVisible();
+
   await answer(page, "My adult children should inherit through a practical plan.");
   await answer(page, "Household and investment decisions should continue if I am incapacitated.");
   await answer(page, "Avoid unnecessary tax complexity and cost.");

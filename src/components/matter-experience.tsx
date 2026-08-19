@@ -107,7 +107,10 @@ export function MatterExperience({ matterId }: { matterId: string }) {
     setMatter(data.matter);
     setInterviewStarted(true);
     setAnswer("");
-    setCorrecting(Boolean(data.matter.workflowState.clarification));
+    setCorrecting(
+      data.matter.workflowState.step === "MO08_CONFIRM" &&
+        Boolean(data.matter.workflowState.clarification),
+    );
     setSaveStatus(`Saved ${new Date(data.matter.savedAt).toLocaleTimeString()}`);
   }
 
