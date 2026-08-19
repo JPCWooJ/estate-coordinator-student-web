@@ -143,6 +143,15 @@ function parseContact(text: string) {
   };
 }
 
+function participantFromText(text: string) {
+  return {
+    name: text,
+    relationship: "principal-provided",
+    intended_role: "help with the estate-planning process",
+    involvement_timing: "principal-provided",
+  };
+}
+
 export function interpretSyntheticTurn(
   step: OpeningStep,
   answer: string,
@@ -282,44 +291,33 @@ export function interpretSyntheticTurn(
       break;
     case "MO06_CONTACTS":
     case "MO06_CONTACTS_MORE": {
-      const textLower = lower;
-      if (
-        /no (more|contact)|ready to continue|contact(?: is)? needed|not needed|none|contact needed/i.test(
-          textLower,
-        )
-      ) {
+      if (/no (more|contact)|ready to continue|contact(?: is)? needed|none/i.test(lower)) {
         result.signals.contacts_complete = true;
-        if (
-          /contact(?: is)? needed|no contact|none|not needed|contact needed/i.test(textLower)
-        ) {
+        if (/contact(?: is)? needed|no contact|none/i.test(lower)) {
           result.patch.missing_contacts = ["CONTACT_NEEDED"];
         }
-      } else {
-        const contact = parseContact(text);
-        if (!contact) {
-          result.accepted = false;
-          result.needs_clarification = true;
-          result.clarification_question =
-            "Please provide the contact as name | firm | expertise | estate role | email | phone | contact trigger | primary or backup, or say that a contact is needed.";
-        } else {
-          result.patch.professional_and_family_contacts = [contact];
-          result.signals.contacts_complete = false;
-        }
+        break;
       }
+
+      const contact = parseContact(text);
+      if (contact) {
+        result.patch.professional_and_family_contacts = [contact];
+        result.signals.contacts_complete = false;
+        break;
+      }
+
+      if (/participat|involved|assistant|family member|trusted family|spouse|children/i.test(lower)) {
+        result.patch.other_participants = [participantFromText(text)];
+        result.signals.contacts_complete = true;
+        break;
+      }
+
+      result.accepted = false;
+      result.needs_clarification = true;
+      result.clarification_question =
+        "Please name a person who should help, provide a professional contact, or say you are ready to continue.";
       break;
     }
-    case "MO07_PARTICIPANTS":
-      result.patch.other_participants = /none|no one/i.test(text)
-        ? []
-        : [
-            {
-              name: text,
-              relationship: "principal-provided",
-              intended_role: "participate in the estate-planning process",
-              involvement_timing: "principal-provided",
-            },
-          ];
-      break;
     case "MO08_HOUSE_IN_ORDER":
       result.patch.house_in_order_concern = /^(no|none)/i.test(text)
         ? "none identified"
