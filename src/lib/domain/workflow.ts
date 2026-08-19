@@ -73,9 +73,17 @@ const STEP_PROGRESS: Record<OpeningStep, number> = {
 
 function nextPriority(record: MatterOpeningRecord) {
   return record.top_three_priorities.find(
-    (priority) =>
-      !record.priority_details.some((detail) => detail.outcome === priority),
+    (priority) => {
+      const detail = record.priority_details.find(
+        (item) => item.outcome === priority,
+      );
+      return !detail || !detail.detail.trim();
+    },
   );
+}
+
+function priorityFollowupQuestion(priority: OutcomeCode) {
+  return OUTCOME_FOLLOWUP_QUESTIONS[priority];
 }
 
 export function getStepLabel(step: OpeningStep) {
@@ -94,37 +102,36 @@ export function getCanonicalQuestion(
 
   switch (state.step) {
     case "MO01_OUTCOMES":
-      return "What would you most like your estate plan to accomplish, and which three outcomes matter most?";
+      return "If this estate-planning process works exactly as you hope, what will it accomplish for you? Tell me what matters most, and if you can, put your top three priorities in order.";
     case "MO01_PRIORITIES":
-      return "Which three of those outcomes are your highest priorities, in order?";
+      return "Of those outcomes, which three matter most to you, in priority order?";
     case "MO01_GOAL_FOLLOWUP": {
       const priority = nextPriority(record);
-      return priority
-        ? OUTCOME_FOLLOWUP_QUESTIONS[priority]
-        : "What would a successful estate plan look like to you?";
+      if (!priority) throw new Error("No priority follow-up is available.");
+      return priorityFollowupQuestion(priority);
     }
     case "MO02_PEOPLE":
-      return "Who should benefit from or be protected by your estate plan, and what interests matter most?";
+      return "At a high level, who do you expect should benefit from or be protected by your estate plan?";
     case "MO02_CIRCUMSTANCES":
-      return "What should we understand about those circumstances before building your plan?";
+      return "Are there any circumstances involving these people that the planning process must understand?";
     case "MO03_CURRENT_PLAN":
-      return "Do you have an existing estate plan, and does it still reflect what you want?";
+      return "Do you already have estate-planning documents or arrangements in place?";
     case "MO03_PLAN_DETAILS":
-      return "What documents or planning arrangements do you already have, and when were they completed?";
+      return "What documents or arrangements do you know exist, approximately when were they completed, and where are they kept?";
     case "MO03_CHANGES":
-      return "What important changes have occurred since that plan was completed?";
+      return "What important changes have occurred since they were completed?";
     case "MO04_TIMING":
-      return "Why are you planning now, and is there any event or deadline we should account for?";
+      return "Why are you addressing this now, and is there an event or deadline affecting the timing?";
     case "MO05_FOOTPRINT":
-      return "Where are your important property, business, or family interests located?";
+      return "Where is your primary home, and do you have important property, businesses, trusts, citizenship, residence, or other connections in another state or country?";
     case "MO05_COMPLEXITY":
-      return "Are there business, tax, digital-asset, family, or other complexities the plan should account for?";
+      return "Are there any trusts, businesses, foreign connections, digital assets, major charitable plans, or other complexities you already know should be considered?";
     case "MO06_CONTACTS":
-      return "Who should be involved or available to help with your estate plan now or in the future?";
+      return "Who should be involved or available to help with your estate plan now or in the future? This might include attorneys, tax or financial professionals, assistants, trusted family members, or anyone else who should know what to do.";
     case "MO08_HOUSE_IN_ORDER":
-      return "Is there anything else that would help you feel your affairs are in order?";
+      return "What would you need to see, understand, or have confirmed to feel confident that your estate plan is complete, current, and working the way you intend?";
     case "MO08_CONFIRM":
-      return "Review your Planning Summary and confirm it, or describe one correction.";
+      return "Does this accurately capture what you want your estate-planning process to accomplish and what matters most to you?";
     case "BLUEPRINT_READY":
       return "Your confirmed planning baseline is ready for the Estate Blueprint.";
     case "STOPPED":
@@ -369,24 +376,40 @@ export function applyPlanningSummaryCorrection(
     if (!correction.clarification_question) {
       throw new Error("A clarification outcome requires a question.");
     }
+    const missingPriority = nextPriority(record);
+    const clarificationQuestion = missingPriority
+      ? priorityFollowupQuestion(missingPriority)
+      : correction.clarification_question;
     return {
       record,
       state: {
         ...state,
-        clarification: { question: correction.clarification_question },
+        clarification: { question: clarificationQuestion },
       },
-      assistantMessage: correction.clarification_question,
+      assistantMessage: clarificationQuestion,
       changed: false,
     };
   }
 
   const patch = correction.patch;
   const currentPlanStatus = patch.current_plan_status ?? record.current_plan_status;
+  const topThreePriorities =
+    patch.top_three_priorities ?? record.top_three_priorities;
+  const retainedPriorityDetails = record.priority_details.filter((detail) =>
+    topThreePriorities.includes(detail.outcome),
+  );
+  const priorityDetails =
+    patch.priority_detail && topThreePriorities.includes(patch.priority_detail.outcome)
+      ? replacePriorityDetail(
+          { ...record, priority_details: retainedPriorityDetails },
+          patch.priority_detail,
+        )
+      : retainedPriorityDetails;
   const corrected: MatterOpeningRecord = {
     ...record,
     desired_outcomes: patch.desired_outcomes ?? record.desired_outcomes,
-    top_three_priorities:
-      patch.top_three_priorities ?? record.top_three_priorities,
+    top_three_priorities: topThreePriorities,
+    priority_details: priorityDetails,
     principal_definition_of_success:
       patch.principal_definition_of_success ??
       record.principal_definition_of_success,
@@ -416,11 +439,20 @@ export function applyPlanningSummaryCorrection(
     other_participants: patch.other_participants ?? record.other_participants,
     matter_classification: classificationFor(currentPlanStatus),
   };
+  const missingPriority = nextPriority(corrected);
+  const clarificationQuestion = missingPriority
+    ? priorityFollowupQuestion(missingPriority)
+    : null;
 
   return {
     record: corrected,
-    state: { ...state, clarification: null },
-    assistantMessage: correction.acknowledgement,
+    state: {
+      ...state,
+      clarification: clarificationQuestion
+        ? { question: clarificationQuestion }
+        : null,
+    },
+    assistantMessage: clarificationQuestion ?? correction.acknowledgement,
     changed: true,
   };
 }
@@ -430,7 +462,11 @@ export function confirmOpening(
   state: WorkflowState,
   confirmedAt = new Date().toISOString(),
 ) {
-  if (state.step !== "MO08_CONFIRM") {
+  if (
+    state.step !== "MO08_CONFIRM" ||
+    state.clarification !== null ||
+    nextPriority(record)
+  ) {
     throw new Error("The Planning Summary confirmation gate is not complete.");
   }
   return {

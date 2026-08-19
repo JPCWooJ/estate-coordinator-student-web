@@ -35,6 +35,7 @@ export async function interpretMatterOpeningAnswer(input: {
 
   const response = await client().responses.parse({
     model: MODEL,
+    store: false,
     input: [
       {
         role: "system",
@@ -71,11 +72,12 @@ export async function interpretPlanningSummaryCorrection(input: {
 
   const response = await client().responses.parse({
     model: MODEL,
+    store: false,
     input: [
       {
         role: "system",
         content:
-          "Apply one constrained correction to the principal-facing Planning Summary baseline. Return accepted only when the correction is clear and supported. Populate only the baseline fields necessary for that correction and preserve every other field. Return clarification with one concise ordinary-language question when the requested change is ambiguous. Do not set system classification, routing, confirmation, or workflow fields.",
+          "Apply one constrained correction to the principal-facing Planning Summary baseline. Return accepted only when the correction is clear and supported. Populate only the baseline fields necessary for that correction and preserve every other field. When an active clarification requests context for a selected priority, populate priority_detail for that outcome. Return clarification with one concise ordinary-language question when the requested change is ambiguous. Do not set system classification, routing, confirmation, or workflow fields.",
       },
       {
         role: "user",

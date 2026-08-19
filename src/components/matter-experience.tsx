@@ -51,6 +51,10 @@ export function MatterExperience({ matterId }: { matterId: string }) {
         }
         setEmail(payload.session.user.email);
         setMatter(payload.matter);
+        setCorrecting(
+          payload.matter.workflowState.step === "MO08_CONFIRM" &&
+            Boolean(payload.matter.workflowState.clarification),
+        );
         setInterviewStarted(
           payload.matter.workflowState.step !== "MO01_OUTCOMES" ||
             payload.matter.messages.length > 0,

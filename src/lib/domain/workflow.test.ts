@@ -111,6 +111,69 @@ describe("Matter Opening v0.3 workflow", () => {
     ]);
   });
 
+  it.each([
+    [
+      "MO01_OUTCOMES",
+      "If this estate-planning process works exactly as you hope, what will it accomplish for you? Tell me what matters most, and if you can, put your top three priorities in order.",
+    ],
+    [
+      "MO01_PRIORITIES",
+      "Of those outcomes, which three matter most to you, in priority order?",
+    ],
+    [
+      "MO02_PEOPLE",
+      "At a high level, who do you expect should benefit from or be protected by your estate plan?",
+    ],
+    [
+      "MO02_CIRCUMSTANCES",
+      "Are there any circumstances involving these people that the planning process must understand?",
+    ],
+    [
+      "MO03_CURRENT_PLAN",
+      "Do you already have estate-planning documents or arrangements in place?",
+    ],
+    [
+      "MO03_PLAN_DETAILS",
+      "What documents or arrangements do you know exist, approximately when were they completed, and where are they kept?",
+    ],
+    [
+      "MO03_CHANGES",
+      "What important changes have occurred since they were completed?",
+    ],
+    [
+      "MO04_TIMING",
+      "Why are you addressing this now, and is there an event or deadline affecting the timing?",
+    ],
+    [
+      "MO05_FOOTPRINT",
+      "Where is your primary home, and do you have important property, businesses, trusts, citizenship, residence, or other connections in another state or country?",
+    ],
+    [
+      "MO05_COMPLEXITY",
+      "Are there any trusts, businesses, foreign connections, digital assets, major charitable plans, or other complexities you already know should be considered?",
+    ],
+    [
+      "MO06_CONTACTS",
+      "Who should be involved or available to help with your estate plan now or in the future? This might include attorneys, tax or financial professionals, assistants, trusted family members, or anyone else who should know what to do.",
+    ],
+    [
+      "MO08_HOUSE_IN_ORDER",
+      "What would you need to see, understand, or have confirmed to feel confident that your estate plan is complete, current, and working the way you intend?",
+    ],
+    [
+      "MO08_CONFIRM",
+      "Does this accurately capture what you want your estate-planning process to accomplish and what matters most to you?",
+    ],
+  ] as const)("keeps the %s question aligned to canon", (step, question) => {
+    expect(
+      getCanonicalQuestion(confirmationReadyRecord(), {
+        step,
+        clarification: null,
+        stop: null,
+      }),
+    ).toBe(question);
+  });
+
   it("derives priority follow-ups from the record without queue state", () => {
     let record = createInitialRecord("aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa");
     let state = createInitialWorkflowState();
@@ -240,6 +303,96 @@ describe("Matter Opening v0.3 workflow", () => {
       "Alabama rental",
     ]);
     expect(result.record.current_plan_snapshot).toBe(record.current_plan_snapshot);
+  });
+
+  it("applies a supported priority-context correction to the Planning Summary", () => {
+    const record = confirmationReadyRecord();
+    const result = applyPlanningSummaryCorrection(
+      record,
+      { step: "MO08_CONFIRM", clarification: null, stop: null },
+      {
+        outcome: "accepted",
+        acknowledgement: "Updated.",
+        clarification_question: null,
+        patch: {
+          ...emptyInterpretationPatch(),
+          priority_detail: {
+            outcome: "intended_transfer",
+            detail: "Transfer equally to the adult children.",
+          },
+        },
+      },
+    );
+
+    expect(
+      buildPrincipalPlanningSummary(result.record).priorityContext,
+    ).toContainEqual({
+      outcome: "Intended transfer",
+      detail: "Transfer equally to the adult children.",
+    });
+  });
+
+  it("requires canonical context for a changed top priority before confirmation", () => {
+    const state: WorkflowState = {
+      step: "MO08_CONFIRM",
+      clarification: null,
+      stop: null,
+    };
+    const changed = applyPlanningSummaryCorrection(
+      confirmationReadyRecord(),
+      state,
+      {
+        outcome: "accepted",
+        acknowledgement: "Priorities updated.",
+        clarification_question: null,
+        patch: {
+          ...emptyInterpretationPatch(),
+          top_three_priorities: [
+            "intended_transfer",
+            "incapacity_readiness",
+            "asset_protection",
+          ],
+        },
+      },
+    );
+
+    expect(changed.record.priority_details).not.toContainEqual(
+      expect.objectContaining({ outcome: "tax_minimization" }),
+    );
+    expect(changed.state.clarification?.question).toBe(
+      "Which risks concern you most - creditors, divorce, litigation, financial immaturity, outside influence, or something else?",
+    );
+    expect(() => confirmOpening(changed.record, changed.state)).toThrow(
+      "The Planning Summary confirmation gate is not complete.",
+    );
+
+    const completed = applyPlanningSummaryCorrection(
+      changed.record,
+      changed.state,
+      {
+        outcome: "accepted",
+        acknowledgement: "Priority context updated.",
+        clarification_question: null,
+        patch: {
+          ...emptyInterpretationPatch(),
+          priority_detail: {
+            outcome: "asset_protection",
+            detail: "Protection from creditor and litigation risk.",
+          },
+        },
+      },
+    );
+
+    expect(completed.state.clarification).toBeNull();
+    expect(
+      buildPrincipalPlanningSummary(completed.record).priorityContext,
+    ).toContainEqual({
+      outcome: "Asset protection",
+      detail: "Protection from creditor and litigation risk.",
+    });
+    expect(confirmOpening(completed.record, completed.state).state.step).toBe(
+      "BLUEPRINT_READY",
+    );
   });
 
   it("builds the complete principal-facing summary without internal fields", () => {
