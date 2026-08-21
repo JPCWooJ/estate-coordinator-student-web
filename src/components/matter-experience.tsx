@@ -9,11 +9,7 @@ import { AppHeader } from "./app-header";
 import { OpeningSummary } from "./opening-summary";
 
 type SessionPayload = { user: { id: string; email: string } | null };
-
-type SessionPayloadWithMatter = {
-  session: SessionPayload;
-  matter: MatterView;
-};
+type SessionPayloadWithMatter = { session: SessionPayload; matter: MatterView };
 
 async function fetchMatterPayload(matterId: string): Promise<SessionPayloadWithMatter> {
   const [sessionResponse, matterResponse] = await Promise.all([
@@ -23,9 +19,30 @@ async function fetchMatterPayload(matterId: string): Promise<SessionPayloadWithM
   const session: SessionPayload = await sessionResponse.json();
   const data = await matterResponse.json();
   if (!matterResponse.ok) {
-    throw new Error(data.error ?? "The matter could not be loaded.");
+    throw new Error(data.error ?? "The planning workspace could not be loaded.");
   }
   return { session, matter: data.matter };
+}
+
+async function continueIntoBlueprint(matterId: string) {
+  const response = await fetch(`/api/matters/${matterId}/blueprint/start`, {
+    method: "POST",
+  });
+  const data = await response.json();
+  if (!response.ok) {
+    throw new Error(data.error ?? "Planning Foundation could not be prepared.");
+  }
+  return data.matter as MatterView;
+}
+
+function whatToExpect(matter: MatterView) {
+  if (matter.blueprintState?.phase === "PLANNING_FOUNDATION") {
+    return "We are establishing the planning range needed for sound decisions, not collecting account-level detail. Evidence appears only when it could materially change that foundation.";
+  }
+  if (matter.blueprintState?.phase === "BLUEPRINT_DECISIONS") {
+    return "The Estate Coordinator will recommend a starting point before asking for your response. Confirmed information and decisions carry forward.";
+  }
+  return "Answer in your own words. Brief follow-ups appear only when something important needs clarification, and your work is saved as you go.";
 }
 
 export function MatterExperience({ matterId }: { matterId: string }) {
@@ -36,39 +53,42 @@ export function MatterExperience({ matterId }: { matterId: string }) {
   const [busy, setBusy] = useState(false);
   const [correcting, setCorrecting] = useState(false);
   const [interviewStarted, setInterviewStarted] = useState(false);
-  const [saveStatus, setSaveStatus] = useState("Loading saved state…");
+  const [saveStatus, setSaveStatus] = useState("Restoring saved work…");
   const [error, setError] = useState("");
+  const [evidenceFile, setEvidenceFile] = useState<File | null>(null);
   const pendingTurnKey = useRef<string | null>(null);
+  const activeTaskRef = useRef<HTMLElement | null>(null);
 
   useEffect(() => {
     let active = true;
     void fetchMatterPayload(matterId)
-      .then((payload) => {
-        if (!active) return;
+      .then(async (payload) => {
         if (!payload.session.user) {
           router.replace("/");
           return;
         }
+        let loaded = payload.matter;
+        if (loaded.status === "blueprint_ready" && !loaded.blueprintState) {
+          loaded = await continueIntoBlueprint(matterId);
+        }
+        if (!active) return;
         setEmail(payload.session.user.email);
-        setMatter(payload.matter);
+        setMatter(loaded);
         setCorrecting(
-          payload.matter.workflowState.step === "MO08_CONFIRM" &&
-            Boolean(payload.matter.workflowState.clarification),
+          loaded.workflowState.step === "MO08_CONFIRM" &&
+            Boolean(loaded.workflowState.clarification),
         );
         setInterviewStarted(
-          payload.matter.workflowState.step !== "MO01_OUTCOMES" ||
-            payload.matter.messages.length > 0,
+          loaded.workflowState.step !== "MO01_OUTCOMES" || loaded.messages.length > 0,
         );
-        setSaveStatus(
-          `Saved ${new Date(payload.matter.savedAt).toLocaleTimeString()}`,
-        );
+        setSaveStatus(`Saved ${new Date(loaded.savedAt).toLocaleTimeString()}`);
       })
       .catch((loadError: unknown) => {
         if (active) {
           setError(
             loadError instanceof Error
               ? loadError.message
-              : "The matter could not be loaded.",
+              : "The planning workspace could not be loaded.",
           );
         }
       });
@@ -77,6 +97,10 @@ export function MatterExperience({ matterId }: { matterId: string }) {
     };
   }, [matterId, router]);
 
+  useEffect(() => {
+    if (matter?.blueprintState) activeTaskRef.current?.focus();
+  }, [matter?.blueprintState]);
+
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!answer.trim() || !matter) return;
@@ -84,9 +108,10 @@ export function MatterExperience({ matterId }: { matterId: string }) {
     setError("");
     setSaveStatus("Saving…");
     pendingTurnKey.current ??= crypto.randomUUID();
-    const response = await fetch(
-      `/api/matters/${matterId}/${correcting ? "corrections" : "turns"}`,
-      {
+    const endpoint = matter.blueprintState
+      ? `/api/matters/${matterId}/blueprint/turns`
+      : `/api/matters/${matterId}/${correcting ? "corrections" : "turns"}`;
+    const response = await fetch(endpoint, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(
@@ -94,12 +119,11 @@ export function MatterExperience({ matterId }: { matterId: string }) {
           ? { turnKey: pendingTurnKey.current, correction: answer }
           : { turnKey: pendingTurnKey.current, answer },
       ),
-      },
-    );
+    });
     const data = await response.json();
     setBusy(false);
     if (!response.ok) {
-      setSaveStatus("Not saved");
+      setSaveStatus("Not saved - retry");
       setError(data.error ?? "Your response could not be saved. Please retry.");
       return;
     }
@@ -117,47 +141,91 @@ export function MatterExperience({ matterId }: { matterId: string }) {
   async function confirm() {
     setBusy(true);
     setError("");
-    setSaveStatus("Saving confirmation…");
-    const response = await fetch(`/api/matters/${matterId}/confirm`, {
+    setSaveStatus("Saving…");
+    try {
+      const response = await fetch(`/api/matters/${matterId}/confirm`, {
+        method: "POST",
+      });
+      const data = await response.json();
+      if (!response.ok) {
+        throw new Error(data.error ?? "The confirmation could not be saved.");
+      }
+      const continued = await continueIntoBlueprint(matterId);
+      setMatter(continued);
+      setCorrecting(false);
+      setSaveStatus("Confirmed and saved");
+    } catch (confirmationError) {
+      setSaveStatus("Not saved - retry");
+      setError(
+        confirmationError instanceof Error
+          ? confirmationError.message
+          : "The confirmation could not be saved.",
+      );
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function submitEvidence(file: File | null) {
+    setBusy(true);
+    setError("");
+    setSaveStatus(file ? "Reviewing and saving…" : "Saving…");
+    pendingTurnKey.current ??= crypto.randomUUID();
+    const form = new FormData();
+    form.set("turnKey", pendingTurnKey.current);
+    if (file) form.set("file", file);
+    const response = await fetch(`/api/matters/${matterId}/blueprint/evidence`, {
       method: "POST",
+      body: form,
     });
     const data = await response.json();
     setBusy(false);
     if (!response.ok) {
-      setSaveStatus("Not saved");
-      setError(data.error ?? "The confirmation could not be saved.");
+      setSaveStatus("Not saved - retry");
+      setError(data.error ?? "The evidence could not be processed. Please retry.");
       return;
     }
+    pendingTurnKey.current = null;
+    setEvidenceFile(null);
     setMatter(data.matter);
-    setSaveStatus("Confirmed and saved");
+    setSaveStatus(`Saved ${new Date(data.matter.savedAt).toLocaleTimeString()}`);
   }
 
   if (!matter || !email) {
     return (
       <main className="centered-state" role="status">
-        {error || "Restoring the last committed state…"}
+        {error || "Restoring your saved work…"}
       </main>
     );
   }
 
-  const isReview = matter.workflowState.step === "MO08_CONFIRM";
+  const isReview = !matter.blueprintState && matter.workflowState.step === "MO08_CONFIRM";
   const isStopped = matter.workflowState.step === "STOPPED";
-  const isConfirmed = matter.workflowState.step === "BLUEPRINT_READY";
+  const blueprintInteraction = matter.blueprintState?.interaction ?? null;
+  const isComplete = blueprintInteraction?.kind === "complete";
   const lastAssistantMessage = matter.messages.at(-1);
   const isStartingInterview =
+    !matter.blueprintState &&
     !isReview &&
     !isStopped &&
-    !isConfirmed &&
     matter.workflowState.step === "MO01_OUTCOMES" &&
     !interviewStarted;
   const hideLastAssistant = Boolean(
-    matter.workflowState.clarification &&
-      lastAssistantMessage?.role === "assistant",
+    matter.workflowState.clarification && lastAssistantMessage?.role === "assistant",
   );
   const visibleMessages = hideLastAssistant
     ? matter.messages.slice(0, -1)
     : matter.messages;
-  const questionText = matter.currentQuestion;
+  const activePrompt =
+    blueprintInteraction?.kind === "question"
+      ? blueprintInteraction.prompt
+      : matter.currentQuestion;
+  const showComposer =
+    !isStartingInterview &&
+    !isStopped &&
+    !isComplete &&
+    blueprintInteraction?.kind !== "evidence" &&
+    (!isReview || correcting);
 
   return (
     <div className="app-shell">
@@ -178,13 +246,13 @@ export function MatterExperience({ matterId }: { matterId: string }) {
 
         <div className="progress-block">
           <div className="progress-copy">
-            <span>Planning conversation</span>
+            <span>{matter.stepLabel}</span>
             <strong>{matter.progress}%</strong>
           </div>
           <div
             className="progress-track"
             role="progressbar"
-            aria-label="Planning conversation progress"
+            aria-label="Estate Blueprint progress"
             aria-valuemin={0}
             aria-valuemax={100}
             aria-valuenow={matter.progress}
@@ -193,22 +261,12 @@ export function MatterExperience({ matterId }: { matterId: string }) {
           </div>
         </div>
 
-        {isConfirmed ? (
-          <section className="endpoint-card" aria-labelledby="confirmed-title">
-            <div className="success-mark" aria-hidden="true">
-              ✓
-            </div>
-            <div className="eyebrow">Planning summary</div>
-            <h2 id="confirmed-title">Planning summary confirmed</h2>
-            <p>
-              Your Planning Summary is confirmed and now serves as Stage 1 of your
-              Estate Blueprint.
-            </p>
-            <p>
-              Stage 2 is not yet available in this release. Your confirmed baseline
-              is saved and ready to continue without repeating these questions.
-            </p>
-            <OpeningSummary record={matter.record} />
+        {isComplete ? (
+          <section className="endpoint-card" aria-labelledby="complete-title">
+            <div className="success-mark" aria-hidden="true">✓</div>
+            <div className="eyebrow">Blueprint Decisions</div>
+            <h2 id="complete-title">{blueprintInteraction.title}</h2>
+            <p>{blueprintInteraction.message}</p>
             <div className="review-actions">
               <Link className="button button-primary" href="/home">
                 Return to planning workspace
@@ -221,17 +279,14 @@ export function MatterExperience({ matterId }: { matterId: string }) {
             <h2 id="stop-title">A qualified professional should review this next</h2>
             <p>{matter.workflowState.stop?.reason}</p>
             <strong>{matter.workflowState.stop?.immediate_action}</strong>
-            <p>Your last accepted state remains saved.</p>
+            <p>Your last accepted work remains saved.</p>
           </section>
         ) : (
           <div className="workspace-grid">
             <section className="conversation" aria-label="Estate planning conversation">
               <div className="conversation-history" aria-live="polite">
                 {visibleMessages.map((message) => (
-                  <article
-                    key={message.id}
-                    className={`message message-${message.role}`}
-                  >
+                  <article key={message.id} className={`message message-${message.role}`}>
                     <span>{message.role === "student" ? "You" : "Estate Coordinator"}</span>
                     <p>{message.content}</p>
                   </article>
@@ -241,29 +296,21 @@ export function MatterExperience({ matterId }: { matterId: string }) {
               {isReview ? (
                 <section className="review-card" aria-labelledby="review-title">
                   <div className="eyebrow">Review before confirming</div>
-                  <h2 id="review-title">Planning Summary</h2>
+                  <h2 id="review-title">Your Planning Summary</h2>
                   <p>
-                    Review this concise summary. Confirm it, or request one correction.
-                    You can add the correction text and continue with the updated
-                    screen.
+                    Confirm this summary, or tell us what should change. Confirmed
+                    information carries directly into Planning Foundation.
                   </p>
                   <OpeningSummary record={matter.record} />
                   {matter.workflowState.clarification && (
-                    <article
-                      className="active-question"
-                      aria-labelledby="correction-question-label"
-                    >
+                    <article className="active-question" aria-labelledby="correction-question-label">
                       <span id="correction-question-label">Estate Coordinator</span>
                       <p>{matter.currentQuestion}</p>
                     </article>
                   )}
                   {!correcting && (
                     <div className="review-actions">
-                      <button
-                        className="button button-primary"
-                        onClick={confirm}
-                        disabled={busy}
-                      >
+                      <button className="button button-primary" onClick={confirm} disabled={busy}>
                         {busy ? "Confirming…" : "Confirm planning summary"}
                       </button>
                       <button
@@ -281,31 +328,108 @@ export function MatterExperience({ matterId }: { matterId: string }) {
                   <div className="eyebrow">Before you begin</div>
                   <h2 id="start-title">Estate Planning Priorities</h2>
                   <p>
-                    This short guided interview gathers your priorities, people, timing,
-                    and planning context to prepare a reliable foundation for Estate Blueprint.
+                    This short guided conversation gathers what matters most, who
+                    should be protected, and the context your Estate Blueprint needs.
                   </p>
                   <ul>
                     <li>There are no right or wrong answers.</li>
-                    <li>Use ordinary language and the details you can share.</li>
-                    <li>Most questions expect a practical, concise answer.</li>
-                    <li>We may ask one follow-up if a material role or contact is missing.</li>
+                    <li>Answer in ordinary language.</li>
+                    <li>You can say you are unsure or not decided.</li>
+                    <li>A brief follow-up appears only when something material is unclear.</li>
                   </ul>
                   <button
                     className="button button-primary"
                     onClick={() => setInterviewStarted(true)}
                     style={{ display: "block", margin: "0 auto" }}
                   >
-                    Begin interview
+                    Begin conversation
                   </button>
                 </section>
+              ) : blueprintInteraction?.kind === "evidence" ? (
+                <section
+                  className="evidence-card"
+                  aria-labelledby="evidence-title"
+                  tabIndex={-1}
+                  ref={(node) => { activeTaskRef.current = node; }}
+                >
+                  <div className="eyebrow">Planning Foundation</div>
+                  <h2 id="evidence-title">A focused evidence check</h2>
+                  <p className="evidence-question">{blueprintInteraction.prompt}</p>
+                  <p>{blueprintInteraction.helper}</p>
+                  <label htmlFor="evidence-file">Relevant PDF</label>
+                  <input
+                    id="evidence-file"
+                    type="file"
+                    accept="application/pdf,.pdf"
+                    onChange={(event) => setEvidenceFile(event.target.files?.[0] ?? null)}
+                    disabled={busy}
+                  />
+                  <div className="review-actions">
+                    <button
+                      className="button button-primary"
+                      onClick={() => void submitEvidence(evidenceFile)}
+                      disabled={busy || !evidenceFile}
+                    >
+                      {busy ? "Reviewing…" : "Review relevant PDF"}
+                    </button>
+                    <button
+                      className="button button-secondary"
+                      onClick={() => void submitEvidence(null)}
+                      disabled={busy}
+                    >
+                      I do not have this now
+                    </button>
+                  </div>
+                </section>
+              ) : blueprintInteraction?.kind === "recommendation" ? (
+                <article
+                  className="recommendation-card"
+                  aria-labelledby="recommendation-title"
+                  tabIndex={-1}
+                  ref={(node) => { activeTaskRef.current = node; }}
+                >
+                  <div className="eyebrow">Blueprint Decisions</div>
+                  <h2 id="recommendation-title">{blueprintInteraction.content.objective}</h2>
+                  <div className="recommendation-section">
+                    <h3>Recommended starting point</h3>
+                    <p>{blueprintInteraction.content.starting_point}</p>
+                  </div>
+                  <div className="recommendation-section">
+                    <h3>Why this fits</h3>
+                    <p>{blueprintInteraction.content.rationale}</p>
+                  </div>
+                  {blueprintInteraction.content.alternative_or_tradeoff && (
+                    <div className="recommendation-section">
+                      <h3>Alternative or tradeoff</h3>
+                      <p>{blueprintInteraction.content.alternative_or_tradeoff}</p>
+                    </div>
+                  )}
+                  {blueprintInteraction.content.open_confirmation && (
+                    <div className="recommendation-section">
+                      <h3>Still to confirm</h3>
+                      <p>{blueprintInteraction.content.open_confirmation}</p>
+                    </div>
+                  )}
+                  <p className="recommendation-question">
+                    {blueprintInteraction.content.response_question}
+                  </p>
+                </article>
               ) : (
-                <article className="active-question" aria-labelledby="active-question-label">
+                <article
+                  className="active-question"
+                  aria-labelledby="active-question-label"
+                  tabIndex={-1}
+                  ref={(node) => { activeTaskRef.current = node; }}
+                >
                   <span id="active-question-label">Estate Coordinator</span>
-                  <p>{questionText}</p>
+                  <p>{activePrompt}</p>
+                  {blueprintInteraction?.kind === "question" && blueprintInteraction.helper && (
+                    <small>{blueprintInteraction.helper}</small>
+                  )}
                 </article>
               )}
 
-              {(!isReview || correcting) && !isStartingInterview && (
+              {showComposer && (
                 <form className="composer" onSubmit={submit}>
                   <label htmlFor="answer">
                     {correcting ? "Describe the correction" : "Your response"}
@@ -314,34 +438,25 @@ export function MatterExperience({ matterId }: { matterId: string }) {
                     id="answer"
                     value={answer}
                     onChange={(event) => setAnswer(event.target.value)}
-                    placeholder={
-                      correcting
-                        ? "Tell us exactly what should change."
-                        : "Answer in your own words. Unknown, not decided, and not applicable are accepted."
-                    }
+                    placeholder={correcting ? "Tell us exactly what should change." : "Answer in your own words."}
                     rows={5}
                     maxLength={5000}
                     disabled={busy}
                   />
                   <div className="composer-footer">
                     <small>{answer.length}/5000</small>
-                    <button
-                      className="button button-primary"
-                      disabled={busy || !answer.trim()}
-                    >
+                    <button className="button button-primary" disabled={busy || !answer.trim()}>
                       {busy ? "Saving…" : correcting ? "Save correction" : "Continue"}
                     </button>
                   </div>
                 </form>
               )}
-              <p className="error-text" role="alert">
-                {error}
-              </p>
+              <p className="error-text" role="alert">{error}</p>
             </section>
 
             <aside className="workspace-aside">
-              <h2>What to expect</h2>
-              <p>One active question at a time. Follow-ups appear only when needed.</p>
+              <h2>What to Expect</h2>
+              <p>{whatToExpect(matter)}</p>
               <div className="boundary-note">
                 <strong>Professional boundary</strong>
                 <p>
