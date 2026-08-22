@@ -93,7 +93,7 @@ function confirmationReadyRecord(): MatterOpeningRecord {
   };
 }
 
-describe("Matter Opening v0.3 workflow", () => {
+describe("Matter Opening v0.4 workflow", () => {
   it("uses the approved outcome taxonomy", () => {
     expect(OutcomeCodeSchema.options).toEqual([
       "intended_transfer",
@@ -134,7 +134,7 @@ describe("Matter Opening v0.3 workflow", () => {
     ],
     [
       "MO03_PLAN_DETAILS",
-      "What documents or arrangements do you know exist, approximately when were they completed, and where are they kept?",
+      "What documents or arrangements do you know exist, and approximately when were they completed?",
     ],
     [
       "MO03_CHANGES",
@@ -414,6 +414,7 @@ describe("Matter Opening v0.3 workflow", () => {
       true,
     );
     expect(summary.recommendedNextStep).toContain("Estate Blueprint");
+    expect(summary.recommendedNextStep).not.toMatch(/Stage\s+[1-7]/i);
     expect(serialized).not.toContain("PLAN_UPDATE");
     expect(serialized).not.toContain("house_in_order");
     expect(serialized).not.toContain(record.house_in_order_concern);

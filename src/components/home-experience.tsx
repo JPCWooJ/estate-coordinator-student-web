@@ -165,8 +165,10 @@ export function HomeExperience() {
                 <article className="matter-card" key={matter.id}>
                   <div>
                     <span className={`status-pill status-${matter.status}`}>
-                      {matter.status === "blueprint_ready"
-                        ? "Ready for Estate Blueprint"
+                      {matter.status === "blueprint_in_progress"
+                        ? matter.stepLabel
+                        : matter.status === "blueprint_ready"
+                          ? "Planning Foundation"
                         : matter.status === "stopped"
                           ? "Professional follow-up required"
                           : "In progress"}
@@ -184,13 +186,13 @@ export function HomeExperience() {
                       aria-valuemin={0}
                       aria-valuemax={100}
                       aria-valuenow={matter.progress}
-                      aria-label="Planning conversation progress"
+                      aria-label="Estate planning progress"
                     >
                       <span style={{ width: `${matter.progress}%` }} />
                     </div>
                     <Link className="button button-secondary" href={`/matter/${matter.id}`}>
                       {matter.openingConfirmedAt
-                        ? "View confirmed planning baseline"
+                        ? "Resume planning"
                         : "Resume conversation"}
                     </Link>
                   </div>

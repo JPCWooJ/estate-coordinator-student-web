@@ -117,7 +117,7 @@ export function getCanonicalQuestion(
     case "MO03_CURRENT_PLAN":
       return "Do you already have estate-planning documents or arrangements in place?";
     case "MO03_PLAN_DETAILS":
-      return "What documents or arrangements do you know exist, approximately when were they completed, and where are they kept?";
+      return "What documents or arrangements do you know exist, and approximately when were they completed?";
     case "MO03_CHANGES":
       return "What important changes have occurred since they were completed?";
     case "MO04_TIMING":

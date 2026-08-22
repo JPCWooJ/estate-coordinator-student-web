@@ -59,7 +59,7 @@ function formatPriorityContext(record: MatterOpeningRecord) {
 }
 
 const DEFAULT_NEXT_STEP =
-  "Confirming this summary enters the Estate Blueprint with Stage 1 complete; Stage 2 continues from this planning baseline.";
+  "Confirming this summary carries your priorities directly into the Estate Blueprint's Planning Foundation without asking you to repeat them.";
 
 export function buildPrincipalPlanningSummary(
   record: MatterOpeningRecord,

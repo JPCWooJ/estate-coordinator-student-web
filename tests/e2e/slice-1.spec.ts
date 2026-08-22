@@ -70,7 +70,13 @@ test("continuous priorities-to-Blueprint handoff saves, clarifies, corrects, and
   });
   expect(created.status).toBe(201);
   await page.goto(`/matter/${created.body.id}`);
-  await page.getByRole("button", { name: "Begin interview" }).click();
+  await expect(
+    page.getByText(
+      "Plan on approximately 10 minutes to complete this conversation.",
+      { exact: true },
+    ),
+  ).toBeVisible();
+  await page.getByRole("button", { name: "Begin conversation" }).click();
 
   const clarification = await answer(page, "I need help framing this.");
   expect(clarification.matter.workflowState.step).toBe("MO01_OUTCOMES");
@@ -168,9 +174,10 @@ test("continuous priorities-to-Blueprint handoff saves, clarifies, corrects, and
 
   await page.getByRole("button", { name: "Confirm planning summary" }).click();
   await expect(
-    page.getByRole("heading", { name: "Planning summary confirmed" }),
+    page.getByText(/To establish the planning range/),
   ).toBeVisible();
-  await expect(page.getByText(/serves as Stage 1/)).toBeVisible();
+  await expect(page.getByText("Planning Foundation", { exact: true }).first()).toBeVisible();
+  await expect(page.getByText(/Stage\s+[1-7]/i)).toHaveCount(0);
   await expect(page.getByRole("link", { name: /download.*summary/i })).toHaveCount(0);
   await page.getByRole("button", { name: "Sign out" }).click();
   await page.getByRole("button", { name: otherSignInButton }).click();
@@ -180,7 +187,7 @@ test("continuous priorities-to-Blueprint handoff saves, clarifies, corrects, and
   await page.getByRole("button", { name: signInButton }).click();
   await page.goto(`/matter/${created.body.id}`);
   await expect(
-    page.getByRole("heading", { name: "Planning summary confirmed" }),
+    page.getByText(/To establish the planning range/),
   ).toBeVisible();
   await expect(page.locator("body")).not.toHaveText("");
   await expect(
