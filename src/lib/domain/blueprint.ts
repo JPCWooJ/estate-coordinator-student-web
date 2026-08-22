@@ -1,6 +1,7 @@
 import { z } from "zod";
 
 import type { MatterOpeningRecord } from "./matter-opening";
+import { USER_JOURNEY_PROGRESS } from "./progress";
 
 export const BLUEPRINT_WORKFLOW_VERSION = "EC_ESTATE_BLUEPRINT_0.7";
 
@@ -890,5 +891,7 @@ export function phaseLabel(phase: BlueprintPhase) {
 }
 
 export function phaseProgress(phase: BlueprintPhase) {
-  return phase === "PLANNING_FOUNDATION" ? 55 : 75;
+  return phase === "PLANNING_FOUNDATION"
+    ? USER_JOURNEY_PROGRESS.planningFoundation
+    : USER_JOURNEY_PROGRESS.blueprintDecisions;
 }
