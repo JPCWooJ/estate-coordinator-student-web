@@ -96,6 +96,8 @@ describe("Estate Blueprint internal gates 1-5", () => {
     expect(result.state.current_gate).toBe(4);
     expect(result.state.completed_gates).toEqual([1, 2, 3]);
     expect(result.state.evidence.status).toBe("not_applicable");
+    expect(result.state.evidence.trigger_reason).toBeNull();
+    expect(result.state.evidence.planning_question).toBeNull();
     expect(result.state.interaction).toBeNull();
     expect(result.recommendationNeeded).toBe("beneficiary");
     expect(result.state.planning_synthesis).toMatchObject({
@@ -175,6 +177,11 @@ describe("Estate Blueprint internal gates 1-5", () => {
     expect(JSON.stringify(stage2.interaction)).toContain(
       "material expected inheritance",
     );
+    expect(stage2.evidence).toMatchObject({
+      triggered: true,
+      trigger_reason: "expected_inheritance",
+      planning_question: expect.stringContaining("expected inheritance"),
+    });
 
     const answered = applyBlueprintAnswer(
       stage2,
@@ -193,11 +200,54 @@ describe("Estate Blueprint internal gates 1-5", () => {
     expect(checkpoint.interaction).toMatchObject({
       kind: "evidence",
       key: "focused_evidence_checkpoint",
+      prompt: expect.stringContaining("expected inheritance"),
     });
     expect(checkpoint.planning_synthesis?.confirmation_dependencies).toEqual(
       expect.arrayContaining([
         expect.stringContaining("unresolved planning inputs"),
       ]),
+    );
+  });
+
+  it("routes a business agreement to Stage 3 without asking for an inheritance range", () => {
+    const opening = confirmedOpening({
+      geographic_and_complexity_flags: [
+        "shareholder agreement restricts transfers of the family business",
+      ],
+    });
+    const checkpoint = evaluateBlueprint(
+      createInitialBlueprintState(opening, {
+        planningBaseline: {
+          ...completeBaseline,
+          expected_inheritance_range: null,
+        },
+        beneficiaryOutcomes: completeBeneficiary,
+      }),
+      [],
+    ).state;
+
+    expect(checkpoint.current_gate).toBe(3);
+    expect(checkpoint.completed_gates).toEqual([1, 2]);
+    expect(checkpoint.planning_baseline.expected_inheritance_range).toBeNull();
+    expect(checkpoint.evidence).toMatchObject({
+      triggered: true,
+      trigger_reason: "business_agreement",
+      planning_question: expect.stringContaining("shareholder agreement"),
+    });
+    expect(checkpoint.interaction).toMatchObject({
+      kind: "evidence",
+      key: "focused_evidence_checkpoint",
+      prompt: expect.stringContaining("shareholder agreement"),
+    });
+    expect(JSON.stringify(checkpoint.interaction)).not.toContain(
+      "expected inheritance",
+    );
+    const resumed = BlueprintStateSchema.parse(
+      JSON.parse(JSON.stringify(checkpoint)),
+    );
+    expect(resumed.evidence.trigger_reason).toBe("business_agreement");
+    expect(resumed.evidence.planning_question).toContain(
+      "shareholder agreement",
     );
   });
 
@@ -217,6 +267,7 @@ describe("Estate Blueprint internal gates 1-5", () => {
     expect(checkpoint.interaction).toMatchObject({
       kind: "evidence",
       key: "focused_evidence_checkpoint",
+      prompt: expect.stringContaining("expected inheritance"),
     });
     const treated = applyEvidenceTreatment(checkpoint, {
       working_scenario: "Treat the interest as a continuing third-party trust.",
@@ -259,6 +310,8 @@ describe("Estate Blueprint internal gates 1-5", () => {
     expect(result.state.completed_gates).toEqual([1, 2]);
     expect(result.state.evidence).toMatchObject({
       triggered: true,
+      trigger_reason: "expected_inheritance",
+      planning_question: expect.stringContaining("third-party trust"),
       status: "pending",
     });
     expect(result.state.planning_synthesis).toMatchObject({
@@ -272,6 +325,7 @@ describe("Estate Blueprint internal gates 1-5", () => {
     expect(result.state.interaction).toMatchObject({
       kind: "evidence",
       key: "focused_evidence_checkpoint",
+      prompt: expect.stringContaining("third-party trust"),
     });
   });
 

@@ -57,6 +57,7 @@ describe("Blueprint recommendation context", () => {
       completed_gates: [1, 2, 3],
       evidence: {
         triggered: true,
+        trigger_reason: "expected_inheritance",
         planning_question:
           "Could the third-party trust change the planning baseline?",
         status: "dependency",

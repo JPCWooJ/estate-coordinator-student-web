@@ -63,8 +63,16 @@ export type FiduciaryContinuityOutcomes = z.infer<
   typeof FiduciaryContinuityOutcomesSchema
 >;
 
+const EvidenceTriggerReasonSchema = z.enum([
+  "expected_inheritance",
+  "business_agreement",
+  "external_instrument",
+]);
+type EvidenceTriggerReason = z.infer<typeof EvidenceTriggerReasonSchema>;
+
 export const EvidenceStateSchema = z.object({
   triggered: z.boolean(),
+  trigger_reason: EvidenceTriggerReasonSchema.nullable(),
   planning_question: NullableText,
   status: z.enum(["not_applicable", "pending", "supported", "dependency"]),
   working_scenario: NullableText,
@@ -227,6 +235,44 @@ function priorityDetail(record: MatterOpeningRecord, outcomes: string[]) {
   );
 }
 
+function evidenceTrigger(searchable: string): {
+  reason: EvidenceTriggerReason;
+  planningQuestion: string;
+} | null {
+  const inheritanceArrangement = searchable.match(
+    /(expected inheritance|third[- ]party trust|inherited trust)/i,
+  )?.[0].toLowerCase();
+  if (inheritanceArrangement) {
+    const subject =
+      inheritanceArrangement === "third-party trust"
+        ? "third-party trust interest"
+        : inheritanceArrangement;
+    return {
+      reason: "expected_inheritance",
+      planningQuestion:
+        `Could the ${subject} materially change the projected estate range or transfer capacity?`,
+    };
+  }
+  const businessAgreement = searchable.match(
+    /(business agreement|shareholder agreement|partnership agreement)/i,
+  )?.[0].toLowerCase();
+  if (businessAgreement) {
+    return {
+      reason: "business_agreement",
+      planningQuestion:
+        `Could the ${businessAgreement} materially change ownership, control, liquidity, or transfer restrictions?`,
+    };
+  }
+  if (/external instrument/i.test(searchable)) {
+    return {
+      reason: "external_instrument",
+      planningQuestion:
+        "Could the external instrument materially change ownership, control, or transfer restrictions?",
+    };
+  }
+  return null;
+}
+
 function externalEvidenceTrigger(record: MatterOpeningRecord) {
   const searchable = [
     ...record.geographic_and_complexity_flags,
@@ -235,9 +281,7 @@ function externalEvidenceTrigger(record: MatterOpeningRecord) {
   ]
     .join(" ")
     .toLowerCase();
-  return /(expected inheritance|third[- ]party trust|inherited trust|business agreement|shareholder agreement|partnership agreement|external instrument)/.test(
-    searchable,
-  );
+  return evidenceTrigger(searchable);
 }
 
 function planningBaselineEvidenceTrigger(baseline: PlanningBaseline) {
@@ -250,14 +294,13 @@ function planningBaselineEvidenceTrigger(baseline: PlanningBaseline) {
       expectedInheritance,
     )
   ) {
-    return true;
+    return (
+      evidenceTrigger(expectedInheritance) ??
+      evidenceTrigger("expected inheritance")
+    );
   }
 
-  return Object.values(baseline).some((value) =>
-    /(expected inheritance|third[- ]party trust|inherited trust|business agreement|shareholder agreement|partnership agreement|external instrument)/i.test(
-      value ?? "",
-    ),
-  );
+  return evidenceTrigger(Object.values(baseline).join(" "));
 }
 
 function createPlanningSynthesis(
@@ -360,7 +403,7 @@ export function createInitialBlueprintState(
     ),
   );
   const readiness = priorityDetail(record, ["heir_readiness"]);
-  const triggered = externalEvidenceTrigger(record);
+  const trigger = externalEvidenceTrigger(record);
 
   return BlueprintStateSchema.parse({
     workflow_version: BLUEPRINT_WORKFLOW_VERSION,
@@ -379,11 +422,10 @@ export function createInitialBlueprintState(
     },
     planning_synthesis: null,
     evidence: {
-      triggered,
-      planning_question: triggered
-        ? "Could an external arrangement materially change what you own, control, or can pass to others?"
-        : null,
-      status: triggered ? "pending" : "not_applicable",
+      triggered: Boolean(trigger),
+      trigger_reason: trigger?.reason ?? null,
+      planning_question: trigger?.planningQuestion ?? null,
+      status: trigger ? "pending" : "not_applicable",
       working_scenario: null,
       contingency: null,
       confirmation_dependency: null,
@@ -478,9 +520,12 @@ export function evaluateBlueprint(
   let state = BlueprintStateSchema.parse(inputState);
   for (;;) {
     if (state.current_gate === 2) {
+      const baselineTrigger = planningBaselineEvidenceTrigger(
+        state.planning_baseline,
+      );
       const expectedInheritanceRequired =
-        state.evidence.triggered ||
-        planningBaselineEvidenceTrigger(state.planning_baseline);
+        state.evidence.trigger_reason === "expected_inheritance" ||
+        baselineTrigger?.reason === "expected_inheritance";
       if (
         !stage2Sufficient(
           state.planning_baseline,
@@ -513,7 +558,8 @@ export function evaluateBlueprint(
           recommendationNeeded: null,
         };
       }
-      const evidenceTriggered = expectedInheritanceRequired;
+      const evidenceTriggered =
+        state.evidence.triggered || Boolean(baselineTrigger);
       state = {
         ...state,
         current_gate: 3,
@@ -526,9 +572,12 @@ export function evaluateBlueprint(
           ? {
               ...state.evidence,
               triggered: true,
+              trigger_reason:
+                state.evidence.trigger_reason ?? baselineTrigger?.reason ?? null,
               planning_question:
                 state.evidence.planning_question ??
-                "Could an external arrangement materially change what you own, control, or can pass to others?",
+                baselineTrigger?.planningQuestion ??
+                null,
               status:
                 state.evidence.status === "not_applicable"
                   ? "pending"
