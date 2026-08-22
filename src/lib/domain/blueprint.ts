@@ -28,7 +28,6 @@ export const PlanningBaselineSchema = z.object({
   assets_counted_toward_floor: NullableText,
   retained_control_requirement: NullableText,
   extraordinary_future_obligations: NullableText,
-  exposure_summary: NullableText,
 });
 export type PlanningBaseline = z.infer<typeof PlanningBaselineSchema>;
 
@@ -376,7 +375,6 @@ export function createInitialBlueprintState(
       assets_counted_toward_floor: null,
       retained_control_requirement: null,
       extraordinary_future_obligations: null,
-      exposure_summary: null,
       ...seed.planningBaseline,
     },
     planning_synthesis: null,
@@ -417,10 +415,15 @@ export function createInitialBlueprintState(
   });
 }
 
-export function stage2Sufficient(baseline: PlanningBaseline) {
+export function stage2Sufficient(
+  baseline: PlanningBaseline,
+  expectedInheritanceRequired: boolean,
+) {
   return (
     answered(baseline.material_assets_range) &&
     answered(baseline.liabilities_range) &&
+    (!expectedInheritanceRequired ||
+      answered(baseline.expected_inheritance_range)) &&
     answered(baseline.lifetime_security_floor) &&
     answered(baseline.assets_counted_toward_floor) &&
     answered(baseline.retained_control_requirement) &&
@@ -475,16 +478,25 @@ export function evaluateBlueprint(
   let state = BlueprintStateSchema.parse(inputState);
   for (;;) {
     if (state.current_gate === 2) {
-      if (!stage2Sufficient(state.planning_baseline)) {
+      const expectedInheritanceRequired =
+        state.evidence.triggered ||
+        planningBaselineEvidenceTrigger(state.planning_baseline);
+      if (
+        !stage2Sufficient(
+          state.planning_baseline,
+          expectedInheritanceRequired,
+        )
+      ) {
         const missing = missingLabels(state.planning_baseline, {
           material_assets_range: "the approximate range of material assets",
           liabilities_range: "the approximate range of liabilities",
-          expected_inheritance_range: "any material expected inheritance",
+          expected_inheritance_range: expectedInheritanceRequired
+            ? "any material expected inheritance"
+            : "",
           lifetime_security_floor: "the amount that must remain available for lifetime security",
           assets_counted_toward_floor: "which assets count toward that security floor",
           retained_control_requirement: "what must remain under your control",
           extraordinary_future_obligations: "any extraordinary future obligations",
-          exposure_summary: "",
         }).filter(Boolean);
         return {
           state: {
@@ -501,9 +513,7 @@ export function evaluateBlueprint(
           recommendationNeeded: null,
         };
       }
-      const evidenceTriggered =
-        state.evidence.triggered ||
-        planningBaselineEvidenceTrigger(state.planning_baseline);
+      const evidenceTriggered = expectedInheritanceRequired;
       state = {
         ...state,
         current_gate: 3,

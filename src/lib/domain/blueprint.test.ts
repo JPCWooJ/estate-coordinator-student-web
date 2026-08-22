@@ -47,7 +47,6 @@ const completeBaseline = {
   assets_counted_toward_floor: "liquid investments and primary residence",
   retained_control_requirement: "retain the home and liquid investments",
   extraordinary_future_obligations: "education support for grandchildren",
-  exposure_summary: "Planning range is sufficient.",
 };
 
 const completeBeneficiary = {
@@ -149,6 +148,57 @@ describe("Estate Blueprint internal gates 1-5", () => {
       .toContain("lifetime security");
     expect(JSON.stringify(result.state.interaction)).not.toContain("material assets");
     expect(JSON.stringify(result.state.interaction)).not.toContain("liabilities");
+  });
+
+  it("requires the expected-inheritance range for a confirmed external arrangement and preserves unknown", () => {
+    const opening = confirmedOpening({
+      geographic_and_complexity_flags: [
+        "material expected inheritance through a third-party trust",
+      ],
+    });
+    const stage2 = evaluateBlueprint(
+      createInitialBlueprintState(opening, {
+        planningBaseline: {
+          ...completeBaseline,
+          expected_inheritance_range: null,
+        },
+        beneficiaryOutcomes: completeBeneficiary,
+      }),
+      [],
+    ).state;
+
+    expect(stage2.current_gate).toBe(2);
+    expect(stage2.interaction).toMatchObject({
+      kind: "question",
+      key: "planning_baseline",
+    });
+    expect(JSON.stringify(stage2.interaction)).toContain(
+      "material expected inheritance",
+    );
+
+    const answered = applyBlueprintAnswer(
+      stage2,
+      acceptedPatch({
+        planning_baseline: { expected_inheritance_range: "unknown" },
+        beneficiary_outcomes: null,
+        fiduciary_continuity_outcomes: null,
+      }),
+    ).state;
+    const checkpoint = evaluateBlueprint(answered, []).state;
+
+    expect(checkpoint.current_gate).toBe(3);
+    expect(checkpoint.planning_baseline.expected_inheritance_range).toBe(
+      "unknown",
+    );
+    expect(checkpoint.interaction).toMatchObject({
+      kind: "evidence",
+      key: "focused_evidence_checkpoint",
+    });
+    expect(checkpoint.planning_synthesis?.confirmation_dependencies).toEqual(
+      expect.arrayContaining([
+        expect.stringContaining("unresolved planning inputs"),
+      ]),
+    );
   });
 
   it("shows only the focused evidence checkpoint when materially triggered and continues with a dependency", () => {

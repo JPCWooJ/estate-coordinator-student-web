@@ -240,8 +240,6 @@ export function interpretSyntheticBlueprintAnswer(input: {
             "retain control of the primary residence and liquid investments",
           extraordinary_future_obligations:
             "education support for two grandchildren",
-          exposure_summary:
-            "Planning-level ranges support a preliminary lifetime-security and transfer-capacity assessment.",
         },
       },
     };

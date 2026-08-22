@@ -572,26 +572,33 @@ export async function confirmMatterOpening(input: {
   userId: string;
   matterId: string;
 }) {
+  const matter = await getMatter(input.userId, input.matterId);
+  if (!matter) throw new Error("Matter not found.");
+  if (
+    matter.workflowState.step === "BLUEPRINT_READY" &&
+    matter.record.principal_confirmed === "yes"
+  ) {
+    return matter;
+  }
+
   if (syntheticModeEnabled()) {
-    const matter = requireSyntheticMatter(input.userId, input.matterId);
-    const result = confirmOpening(matter.record, matter.state);
-    matter.record = result.record;
-    matter.state = result.state;
-    matter.status = "blueprint_ready";
-    matter.revision += 1;
-    matter.openingConfirmedAt = result.record.confirmation_date;
-    matter.updatedAt = result.record.confirmation_date;
+    const synthetic = requireSyntheticMatter(input.userId, input.matterId);
+    const result = confirmOpening(synthetic.record, synthetic.state);
+    synthetic.record = result.record;
+    synthetic.state = result.state;
+    synthetic.status = "blueprint_ready";
+    synthetic.revision += 1;
+    synthetic.openingConfirmedAt = result.record.confirmation_date;
+    synthetic.updatedAt = result.record.confirmation_date;
     appendSyntheticMessage(
-      matter,
+      synthetic,
       "assistant",
       result.state.step,
       result.assistantMessage,
     );
-    return syntheticView(matter);
+    return syntheticView(synthetic);
   }
 
-  const matter = await getMatter(input.userId, input.matterId);
-  if (!matter) throw new Error("Matter not found.");
   const result = confirmOpening(matter.record, matter.workflowState);
   const supabase = createAdminSupabaseClient();
   const { error } = await supabase.rpc("confirm_matter_opening", {
@@ -977,7 +984,6 @@ export async function seedSyntheticBlueprintScenario(input: {
     assets_counted_toward_floor: "liquid investments and primary residence",
     retained_control_requirement: "retain the home and liquid investments",
     extraordinary_future_obligations: "education support for grandchildren",
-    exposure_summary: "Planning range is sufficient.",
   };
   syntheticMatters.set(id, {
     id,

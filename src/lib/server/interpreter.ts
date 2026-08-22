@@ -177,7 +177,7 @@ export async function generateBlueprintRecommendation(input: {
       {
         role: "system",
         content:
-          "Write one concise, principal-facing Estate Coordinator recommendation for the requested approved domain. Present the recommended starting point before asking for the principal's response. Tie the rationale to confirmed goals and facts. Include only a material alternative, tradeoff, or professional confirmation when useful. Do not claim legal, tax, valuation, or other professional verification. Do not repeat a resolved decision. Do not choose workflow progression.",
+          "Write one concise, principal-facing Estate Coordinator recommendation for the requested approved domain. Present the recommended starting point before asking for the principal's response. Tie the rationale to confirmed goals and facts. When a structured evidence treatment is supplied, use its working scenario, contingency, and confirmation dependency only when material to the requested domain. Include only a material alternative, tradeoff, or professional confirmation when useful. Do not claim legal, tax, valuation, or other professional verification. Do not repeat a resolved decision. Do not choose workflow progression.",
       },
       {
         role: "user",
@@ -189,6 +189,16 @@ export async function generateBlueprintRecommendation(input: {
           beneficiary_outcomes: input.state.beneficiary_outcomes,
           fiduciary_continuity_outcomes:
             input.state.fiduciary_continuity_outcomes,
+          evidence_treatment:
+            input.state.evidence.status === "supported" ||
+            input.state.evidence.status === "dependency"
+              ? {
+                  working_scenario: input.state.evidence.working_scenario,
+                  contingency: input.state.evidence.contingency,
+                  confirmation_dependency:
+                    input.state.evidence.confirmation_dependency,
+                }
+              : null,
           prior_decisions: input.decisions,
         }),
       },

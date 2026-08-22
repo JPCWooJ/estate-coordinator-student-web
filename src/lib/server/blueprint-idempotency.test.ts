@@ -1,7 +1,9 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { POST as postBlueprintEvidence } from "@/app/api/matters/[id]/blueprint/evidence/route";
+import { POST as postBlueprintStart } from "@/app/api/matters/[id]/blueprint/start/route";
 import { POST as postBlueprintTurn } from "@/app/api/matters/[id]/blueprint/turns/route";
+import { POST as postMatterConfirmation } from "@/app/api/matters/[id]/confirm/route";
 import {
   BlueprintState,
   BlueprintStateSchema,
@@ -16,6 +18,10 @@ import {
   createInitialRecord,
   MatterOpeningRecord,
 } from "@/lib/domain/matter-opening";
+import {
+  resetSyntheticStoreForTests,
+  seedSyntheticBlueprintScenario,
+} from "@/lib/server/data";
 
 const mocks = vi.hoisted(() => ({
   createAdminSupabaseClient: vi.fn(),
@@ -64,7 +70,6 @@ const completeBaseline = {
   assets_counted_toward_floor: "liquid investments and primary residence",
   retained_control_requirement: "retain the home and liquid investments",
   extraordinary_future_obligations: "education support for grandchildren",
-  exposure_summary: "Planning range is sufficient.",
 };
 
 const completeBeneficiary = {
@@ -409,10 +414,18 @@ function evidenceRequest(turnKey: string) {
   );
 }
 
+function postRequest(path: string) {
+  return new Request(`http://localhost${path}`, {
+    method: "POST",
+    headers: { host: "localhost", origin: "http://localhost" },
+  });
+}
+
 const routeContext = { params: Promise.resolve({ id: MATTER_ID }) };
 
 beforeEach(() => {
   vi.clearAllMocks();
+  resetSyntheticStoreForTests();
   mocks.syntheticModeEnabled.mockReturnValue(false);
   mocks.getCurrentUser.mockResolvedValue({
     id: USER_ID,
@@ -448,6 +461,54 @@ beforeEach(() => {
 });
 
 describe("Blueprint server/API idempotency", () => {
+  it("continues after a committed confirmation when the first Blueprint start fails", async () => {
+    mocks.syntheticModeEnabled.mockReturnValue(true);
+    const matterId = await seedSyntheticBlueprintScenario({
+      userId: USER_ID,
+      scenario: "zero_turn",
+    });
+    const context = { params: Promise.resolve({ id: matterId }) };
+    mocks.generateBlueprintRecommendation.mockRejectedValueOnce(
+      new Error("transient Blueprint start failure"),
+    );
+
+    const failedStart = await postBlueprintStart(
+      postRequest(`/api/matters/${matterId}/blueprint/start`),
+      context,
+    );
+    expect(failedStart.status).toBe(400);
+
+    const retriedConfirmation = await postMatterConfirmation(
+      postRequest(`/api/matters/${matterId}/confirm`),
+      context,
+    );
+    expect(retriedConfirmation.status).toBe(200);
+    const confirmedPayload = (await retriedConfirmation.json()) as {
+      matter: {
+        blueprintState: BlueprintState | null;
+        messages: StoredMessage[];
+      };
+    };
+    expect(confirmedPayload.matter.blueprintState).toBeNull();
+    expect(confirmedPayload.matter.messages).toHaveLength(0);
+
+    const continued = await postBlueprintStart(
+      postRequest(`/api/matters/${matterId}/blueprint/start`),
+      context,
+    );
+    expect(continued.status).toBe(200);
+    const continuedPayload = (await continued.json()) as {
+      matter: {
+        blueprintState: BlueprintState;
+        messages: StoredMessage[];
+      };
+    };
+    expect(continuedPayload.matter.blueprintState.phase).toBe(
+      "BLUEPRINT_DECISIONS",
+    );
+    expect(continuedPayload.matter.messages).toHaveLength(0);
+  });
+
   it("returns the saved first turn on an accepted-key retry and still rejects a new stale turn", async () => {
     const database = new FakeDatabase(
       confirmedOpening(),
