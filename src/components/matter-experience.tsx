@@ -284,15 +284,7 @@ export function MatterExperience({ matterId }: { matterId: string }) {
         ) : (
           <div className="workspace-grid">
             <section className="conversation" aria-label="Estate planning conversation">
-              <div className="conversation-history" aria-live="polite">
-                {visibleMessages.map((message) => (
-                  <article key={message.id} className={`message message-${message.role}`}>
-                    <span>{message.role === "student" ? "You" : "Estate Coordinator"}</span>
-                    <p>{message.content}</p>
-                  </article>
-                ))}
-              </div>
-
+              <div className="active-task">
               {isReview ? (
                 <section className="review-card" aria-labelledby="review-title">
                   <div className="eyebrow">Review before confirming</div>
@@ -331,6 +323,7 @@ export function MatterExperience({ matterId }: { matterId: string }) {
                     This short guided conversation gathers what matters most, who
                     should be protected, and the context your Estate Blueprint needs.
                   </p>
+                  <p>Plan on approximately 10 minutes to complete this conversation.</p>
                   <ul>
                     <li>There are no right or wrong answers.</li>
                     <li>Answer in ordinary language.</li>
@@ -452,12 +445,22 @@ export function MatterExperience({ matterId }: { matterId: string }) {
                 </form>
               )}
               <p className="error-text" role="alert">{error}</p>
-            </section>
+              </div>
 
-            <aside className="workspace-aside">
-              <h2>What to Expect</h2>
-              <p>{whatToExpect(matter)}</p>
-            </aside>
+              <aside className="workspace-aside">
+                <h2>What to Expect</h2>
+                <p>{whatToExpect(matter)}</p>
+              </aside>
+
+              <div className="conversation-history" aria-live="polite">
+                {visibleMessages.map((message) => (
+                  <article key={message.id} className={`message message-${message.role}`}>
+                    <span>{message.role === "student" ? "You" : "Estate Coordinator"}</span>
+                    <p>{message.content}</p>
+                  </article>
+                ))}
+              </div>
+            </section>
           </div>
         )}
       </main>

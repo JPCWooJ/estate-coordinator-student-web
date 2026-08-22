@@ -495,19 +495,28 @@ h2 {
 }
 
 .workspace-grid {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) 280px;
-  gap: 28px;
-  align-items: start;
+  min-width: 0;
 }
 
 .conversation {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 280px;
+  column-gap: 28px;
+  align-items: start;
   min-width: 0;
 }
 
 .conversation-history {
   display: grid;
+  grid-column: 1;
+  grid-row: 1;
   gap: 14px;
+}
+
+.active-task {
+  min-width: 0;
+  grid-column: 1;
+  grid-row: 2;
 }
 
 .message {
@@ -655,6 +664,8 @@ h2 {
 .workspace-aside {
   position: sticky;
   top: 24px;
+  grid-column: 2;
+  grid-row: 1 / span 2;
   border: 1px solid var(--line);
   border-radius: 10px;
   padding: 22px;
@@ -824,12 +835,25 @@ td {
     padding: 46px 28px;
   }
 
-  .workspace-grid {
+  .conversation {
     grid-template-columns: 1fr;
+    row-gap: 28px;
+  }
+
+  .active-task {
+    grid-column: 1;
+    grid-row: 1;
   }
 
   .workspace-aside {
     position: static;
+    grid-column: 1;
+    grid-row: 2;
+  }
+
+  .conversation-history {
+    grid-column: 1;
+    grid-row: 3;
   }
 }
 

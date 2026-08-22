@@ -59,6 +59,22 @@ async function expectViewportFit(page: Page) {
   ).toBe(true);
 }
 
+async function expectMobileActiveTaskOrder(page: Page, projectName: string) {
+  if (projectName !== "mobile-chromium") return;
+  const [task, orientation, history] = await Promise.all([
+    page.locator(".active-task").boundingBox(),
+    page.getByRole("complementary").boundingBox(),
+    page.locator(".conversation-history").boundingBox(),
+  ]);
+  expect(task).not.toBeNull();
+  expect(orientation).not.toBeNull();
+  expect(history).not.toBeNull();
+  expect(task!.y + task!.height).toBeLessThanOrEqual(orientation!.y + 1);
+  expect(orientation!.y + orientation!.height).toBeLessThanOrEqual(
+    history!.y + 1,
+  );
+}
+
 function textPdf(text: string) {
   const lines = text.split("\n").map((line) => line.replace(/([\\()])/g, "\\$1"));
   const stream = `BT /F1 11 Tf 50 740 Td ${lines
@@ -89,7 +105,7 @@ function textPdf(text: string) {
 
 test("uninterrupted zero-turn foundation reaches and completes Blueprint Decisions", async ({
   page,
-}) => {
+}, testInfo) => {
   const id = await seed(page, "zero_turn");
   await page.goto(`/matter/${id}`);
 
@@ -111,6 +127,7 @@ test("uninterrupted zero-turn foundation reaches and completes Blueprint Decisio
   const beneficiary = await answer(page, "I accept this recommendation.");
   expect(beneficiary.matter.decisions).toHaveLength(1);
   await expect(page.getByText(/In one answer, tell us what matters about/)).toBeVisible();
+  await expectMobileActiveTaskOrder(page, testInfo.project.name);
   await expectViewportFit(page);
 
   await answer(
