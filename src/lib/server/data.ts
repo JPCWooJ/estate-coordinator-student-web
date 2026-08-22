@@ -412,6 +412,31 @@ export async function getMatter(
   };
 }
 
+async function getAcceptedBlueprintRetry(
+  userId: string,
+  matterId: string,
+  turnKey: string,
+) {
+  if (syntheticModeEnabled()) {
+    const matter = syntheticMatters.get(matterId);
+    return matter?.ownerId === userId && matter.processedTurnKeys.has(turnKey)
+      ? syntheticView(matter)
+      : null;
+  }
+
+  const supabase = createAdminSupabaseClient();
+  const { data, error } = await supabase
+    .from("messages")
+    .select("id")
+    .eq("matter_id", matterId)
+    .eq("owner_id", userId)
+    .eq("turn_key", turnKey)
+    .eq("role", "student")
+    .maybeSingle();
+  if (error) throw error;
+  return data ? getMatter(userId, matterId) : null;
+}
+
 export async function submitMatterTurn(input: {
   userId: string;
   matterId: string;
@@ -653,16 +678,16 @@ export async function submitBlueprintTurn(input: {
   turnKey: string;
   answer: string;
 }) {
+  const acceptedRetry = await getAcceptedBlueprintRetry(
+    input.userId,
+    input.matterId,
+    input.turnKey,
+  );
+  if (acceptedRetry) return acceptedRetry;
+
   const matter = await getMatter(input.userId, input.matterId);
   if (!matter?.blueprintState) {
     throw new Error("Planning Foundation is not ready.");
-  }
-
-  if (syntheticModeEnabled()) {
-    const synthetic = requireSyntheticMatter(input.userId, input.matterId);
-    if (synthetic.processedTurnKeys.has(input.turnKey)) {
-      return syntheticView(synthetic);
-    }
   }
 
   const expectedState = matter.blueprintState;
@@ -768,16 +793,17 @@ export async function submitBlueprintEvidence(input: {
   turnKey: string;
   file: File | null;
 }) {
+  const acceptedRetry = await getAcceptedBlueprintRetry(
+    input.userId,
+    input.matterId,
+    input.turnKey,
+  );
+  if (acceptedRetry) return acceptedRetry;
+
   const matter = await getMatter(input.userId, input.matterId);
   if (!matter?.blueprintState) throw new Error("Planning Foundation is not ready.");
   if (matter.blueprintState.interaction?.kind !== "evidence") {
     throw new Error("The focused evidence checkpoint is not active.");
-  }
-  if (syntheticModeEnabled()) {
-    const synthetic = requireSyntheticMatter(input.userId, input.matterId);
-    if (synthetic.processedTurnKeys.has(input.turnKey)) {
-      return syntheticView(synthetic);
-    }
   }
 
   let treatment: EvidenceTreatment;
