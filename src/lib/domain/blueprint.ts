@@ -199,6 +199,10 @@ function known(value: string | null) {
   return Boolean(value && value.trim() && value.trim().toLowerCase() !== "unknown");
 }
 
+function answered(value: string | null) {
+  return Boolean(value?.trim());
+}
+
 function joinKnown(values: string[]) {
   const filtered = values.filter((value) => known(value));
   return filtered.length ? filtered.join("; ") : null;
@@ -225,6 +229,26 @@ function externalEvidenceTrigger(record: MatterOpeningRecord) {
   );
 }
 
+function planningBaselineEvidenceTrigger(baseline: PlanningBaseline) {
+  const expectedInheritance = baseline.expected_inheritance_range
+    ?.trim()
+    .toLowerCase();
+  if (
+    expectedInheritance &&
+    !/^(unknown|not decided|not applicable|none(?: expected)?)$/.test(
+      expectedInheritance,
+    )
+  ) {
+    return true;
+  }
+
+  return Object.values(baseline).some((value) =>
+    /(expected inheritance|third[- ]party trust|inherited trust|business agreement|shareholder agreement|partnership agreement|external instrument)/i.test(
+      value ?? "",
+    ),
+  );
+}
+
 export function createInitialBlueprintState(
   record: MatterOpeningRecord,
   seed: Partial<{
@@ -233,14 +257,6 @@ export function createInitialBlueprintState(
     fiduciaryContinuityOutcomes: Partial<FiduciaryContinuityOutcomes>;
   }> = {},
 ): BlueprintState {
-  const contacts = joinKnown([
-    ...record.professional_and_family_contacts.map((contact) =>
-      [contact.name, contact.estate_role].filter(Boolean).join(" - "),
-    ),
-    ...record.other_participants.map((participant) =>
-      [participant.name, participant.intended_role].filter(Boolean).join(" - "),
-    ),
-  ]);
   const responsibilities = priorityDetail(record, [
     "incapacity_readiness",
     "business_charitable_family_legacy",
@@ -295,7 +311,7 @@ export function createInitialBlueprintState(
       ...seed.beneficiaryOutcomes,
     },
     fiduciary_continuity_outcomes: {
-      trusted_people_or_institutions: contacts,
+      trusted_people_or_institutions: null,
       backups: null,
       essential_responsibilities: responsibilities,
       special_assets_or_purposes: specialAssets,
@@ -309,23 +325,23 @@ export function createInitialBlueprintState(
 
 export function stage2Sufficient(baseline: PlanningBaseline) {
   return (
-    known(baseline.material_assets_range) &&
-    known(baseline.liabilities_range) &&
-    known(baseline.lifetime_security_floor) &&
-    known(baseline.assets_counted_toward_floor) &&
-    known(baseline.retained_control_requirement) &&
-    known(baseline.extraordinary_future_obligations)
+    answered(baseline.material_assets_range) &&
+    answered(baseline.liabilities_range) &&
+    answered(baseline.lifetime_security_floor) &&
+    answered(baseline.assets_counted_toward_floor) &&
+    answered(baseline.retained_control_requirement) &&
+    answered(baseline.extraordinary_future_obligations)
   );
 }
 
 export function beneficiarySufficient(outcomes: BeneficiaryOutcomes) {
   return (
-    known(outcomes.intended_beneficiaries) &&
-    known(outcomes.substitute_beneficiaries) &&
-    known(outcomes.relative_treatment) &&
-    known(outcomes.protection_needs) &&
-    known(outcomes.stewardship_objectives) &&
-    known(outcomes.special_treatment)
+    answered(outcomes.intended_beneficiaries) &&
+    answered(outcomes.substitute_beneficiaries) &&
+    answered(outcomes.relative_treatment) &&
+    answered(outcomes.protection_needs) &&
+    answered(outcomes.stewardship_objectives) &&
+    answered(outcomes.special_treatment)
   );
 }
 
@@ -333,11 +349,11 @@ export function fiduciaryContinuitySufficient(
   outcomes: FiduciaryContinuityOutcomes,
 ) {
   return (
-    known(outcomes.trusted_people_or_institutions) &&
-    known(outcomes.backups) &&
-    known(outcomes.essential_responsibilities) &&
-    known(outcomes.special_assets_or_purposes) &&
-    known(outcomes.beneficiary_readiness)
+    answered(outcomes.trusted_people_or_institutions) &&
+    answered(outcomes.backups) &&
+    answered(outcomes.essential_responsibilities) &&
+    answered(outcomes.special_assets_or_purposes) &&
+    answered(outcomes.beneficiary_readiness)
   );
 }
 
@@ -346,7 +362,7 @@ function missingLabels<T extends Record<string, string | null>>(
   labels: Record<keyof T, string>,
 ) {
   return (Object.keys(labels) as Array<keyof T>)
-    .filter((key) => !known(value[key]))
+    .filter((key) => !answered(value[key]))
     .map((key) => labels[key]);
 }
 
@@ -391,10 +407,26 @@ export function evaluateBlueprint(
           recommendationNeeded: null,
         };
       }
+      const evidenceTriggered =
+        state.evidence.triggered ||
+        planningBaselineEvidenceTrigger(state.planning_baseline);
       state = {
         ...state,
         current_gate: 3,
         completed_gates: [...new Set([...state.completed_gates, 2])],
+        evidence: evidenceTriggered
+          ? {
+              ...state.evidence,
+              triggered: true,
+              planning_question:
+                state.evidence.planning_question ??
+                "Could an external arrangement materially change what you own, control, or can pass to others?",
+              status:
+                state.evidence.status === "not_applicable"
+                  ? "pending"
+                  : state.evidence.status,
+            }
+          : state.evidence,
         interaction: null,
       };
       continue;

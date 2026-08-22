@@ -151,6 +151,94 @@ describe("Estate Blueprint internal gates 1-5", () => {
     expect(continued.recommendationNeeded).toBe("beneficiary");
   });
 
+  it("routes a qualifying inheritance first disclosed in Stage 2 through the evidence checkpoint", () => {
+    const stage2 = evaluateBlueprint(
+      createInitialBlueprintState(confirmedOpening(), {
+        planningBaseline: {
+          ...completeBaseline,
+          expected_inheritance_range: null,
+          lifetime_security_floor: null,
+        },
+        beneficiaryOutcomes: completeBeneficiary,
+      }),
+      [],
+    ).state;
+    const answered = applyBlueprintAnswer(
+      stage2,
+      acceptedPatch({
+        planning_baseline: {
+          expected_inheritance_range:
+            "$2 million to $3 million through a third-party trust",
+          lifetime_security_floor: "$5 million",
+        },
+        beneficiary_outcomes: null,
+        fiduciary_continuity_outcomes: null,
+      }),
+    ).state;
+    const result = evaluateBlueprint(answered, []);
+
+    expect(result.state.current_gate).toBe(3);
+    expect(result.state.completed_gates).toEqual([1, 2]);
+    expect(result.state.evidence).toMatchObject({
+      triggered: true,
+      status: "pending",
+    });
+    expect(result.state.interaction).toMatchObject({
+      kind: "evidence",
+      key: "focused_evidence_checkpoint",
+    });
+  });
+
+  it("preserves permitted uncertainty and advances without repeat-question loops", () => {
+    const state = createInitialBlueprintState(confirmedOpening(), {
+      planningBaseline: {
+        ...completeBaseline,
+        liabilities_range: "unknown",
+        expected_inheritance_range: "none",
+        retained_control_requirement: "not decided",
+        extraordinary_future_obligations: "not applicable",
+      },
+      beneficiaryOutcomes: {
+        ...completeBeneficiary,
+        substitute_beneficiaries: "not decided",
+        protection_needs: "unknown",
+        special_treatment: "none",
+      },
+    });
+    const stage4 = evaluateBlueprint(state, []);
+
+    expect(stage4.state.current_gate).toBe(4);
+    expect(stage4.recommendationNeeded).toBe("beneficiary");
+    expect(stage4.state.planning_baseline).toMatchObject({
+      liabilities_range: "unknown",
+      expected_inheritance_range: "none",
+      retained_control_requirement: "not decided",
+      extraordinary_future_obligations: "not applicable",
+    });
+    expect(stage4.state.beneficiary_outcomes).toMatchObject({
+      substitute_beneficiaries: "not decided",
+      protection_needs: "unknown",
+      special_treatment: "none",
+    });
+
+    const stage5 = evaluateBlueprint(
+      {
+        ...stage4.state,
+        current_gate: 5,
+        fiduciary_continuity_outcomes: {
+          trusted_people_or_institutions: "not decided",
+          backups: "unknown",
+          essential_responsibilities: "not applicable",
+          special_assets_or_purposes: "none",
+          beneficiary_readiness: "not decided",
+        },
+      },
+      [],
+    );
+    expect(stage5.recommendationNeeded).toBe("fiduciary_continuity");
+    expect(stage5.state.interaction).toBeNull();
+  });
+
   it("goes directly to the beneficiary recommendation when confirmed state is sufficient", () => {
     const state = createInitialBlueprintState(confirmedOpening(), {
       planningBaseline: completeBaseline,
@@ -213,6 +301,89 @@ describe("Estate Blueprint internal gates 1-5", () => {
       "fiduciary_continuity",
     );
     expect(recommendationRequest.state.interaction).toBeNull();
+  });
+
+  it("carries Matter Opening participants as known people without confirming Stage 5 fiduciary choices", () => {
+    const opening = confirmedOpening({
+      priority_details: [
+        {
+          outcome: "incapacity_readiness",
+          detail: "Keep household and investment decisions moving.",
+        },
+        {
+          outcome: "heir_readiness",
+          detail: "Require financial education before greater authority.",
+        },
+      ],
+      professional_and_family_contacts: [
+        {
+          name: "Jordan Lee",
+          firm: "Harbor Counsel",
+          expertise: "estate planning",
+          estate_role: "planning counsel",
+          email: "",
+          telephone: "",
+          contact_trigger: "planning update",
+          priority: "primary",
+          missing_information: [],
+        },
+      ],
+      other_participants: [
+        {
+          name: "Spouse",
+          relationship: "family",
+          intended_role: "participate in planning",
+          involvement_timing: "now",
+        },
+      ],
+    });
+    let state = createInitialBlueprintState(opening, {
+      planningBaseline: completeBaseline,
+      beneficiaryOutcomes: completeBeneficiary,
+    });
+
+    expect(state.fiduciary_continuity_outcomes.trusted_people_or_institutions)
+      .toBeNull();
+
+    const beneficiaryEvaluation = evaluateBlueprint(state, []);
+    state = presentRecommendation(
+      beneficiaryEvaluation.state,
+      "beneficiary",
+      recommendation,
+    );
+    const beneficiaryDecision = buildDecisionRecord(state, {
+      outcome: "accepted",
+      acknowledgement: "Saved.",
+      clarification_question: null,
+      disposition: "accept",
+      modification: null,
+      open_confirmation: null,
+    });
+    const stage5 = evaluateBlueprint(
+      { ...state, interaction: null },
+      [beneficiaryDecision],
+    );
+
+    expect(stage5.state.current_gate).toBe(5);
+    expect(stage5.state.interaction).toMatchObject({
+      kind: "question",
+      key: "fiduciary_continuity_outcomes",
+    });
+    expect(JSON.stringify(stage5.state.interaction)).toContain(
+      "people or institutions you trust",
+    );
+    expect(JSON.stringify(stage5.state.interaction)).toContain(
+      "appropriate backups",
+    );
+    expect(JSON.stringify(stage5.state.interaction)).not.toContain(
+      "responsibilities that must continue",
+    );
+    expect(JSON.stringify(stage5.state.interaction)).not.toContain(
+      "special assets or purposes",
+    );
+    expect(JSON.stringify(stage5.state.interaction)).not.toContain(
+      "what readiness should precede",
+    );
   });
 
   it.each([
