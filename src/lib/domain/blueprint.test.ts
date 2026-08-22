@@ -9,6 +9,7 @@ import {
   createInitialBlueprintState,
   DecisionDisposition,
   evaluateBlueprint,
+  BlueprintStateSchema,
   presentRecommendation,
   RecommendationContent,
 } from "./blueprint";
@@ -98,6 +99,33 @@ describe("Estate Blueprint internal gates 1-5", () => {
     expect(result.state.evidence.status).toBe("not_applicable");
     expect(result.state.interaction).toBeNull();
     expect(result.recommendationNeeded).toBe("beneficiary");
+    expect(result.state.planning_synthesis).toMatchObject({
+      current_and_projected_estate_range: expect.stringContaining(
+        "$8 million to $10 million",
+      ),
+      lifetime_security_boundary: expect.stringContaining("$5 million"),
+      preliminary_transfer_capacity: expect.stringContaining(
+        "planning-level ranges do not support a more precise amount",
+      ),
+      potential_transfer_tax_exposure: expect.stringContaining(
+        "not quantified",
+      ),
+      liquidity_and_concentration_considerations: expect.stringContaining(
+        "liquid investments and primary residence",
+      ),
+      material_appreciation_exposure: expect.stringContaining(
+        "no appreciation rate or value is assumed",
+      ),
+    });
+
+    const resumed = BlueprintStateSchema.parse(
+      JSON.parse(JSON.stringify(result.state)),
+    );
+    expect(resumed.planning_synthesis).toEqual(
+      result.state.planning_synthesis,
+    );
+    expect(resumed.current_gate).toBe(4);
+    expect(resumed.interaction).toBeNull();
   });
 
   it("asks one consolidated Stage 2 question containing only missing decision inputs", () => {
@@ -183,6 +211,14 @@ describe("Estate Blueprint internal gates 1-5", () => {
       triggered: true,
       status: "pending",
     });
+    expect(result.state.planning_synthesis).toMatchObject({
+      current_and_projected_estate_range: expect.stringContaining(
+        "$2 million to $3 million through a third-party trust",
+      ),
+      confirmation_dependencies: expect.arrayContaining([
+        expect.stringContaining("governing evidence"),
+      ]),
+    });
     expect(result.state.interaction).toMatchObject({
       kind: "evidence",
       key: "focused_evidence_checkpoint",
@@ -214,6 +250,17 @@ describe("Estate Blueprint internal gates 1-5", () => {
       expected_inheritance_range: "none",
       retained_control_requirement: "not decided",
       extraordinary_future_obligations: "not applicable",
+    });
+    expect(stage4.state.planning_synthesis).toMatchObject({
+      current_and_projected_estate_range: expect.stringContaining(
+        "liabilities unknown",
+      ),
+      preliminary_transfer_capacity: expect.stringContaining(
+        "retained-control needs (not decided)",
+      ),
+      confirmation_dependencies: expect.arrayContaining([
+        expect.stringContaining("Confirm unresolved planning inputs"),
+      ]),
     });
     expect(stage4.state.beneficiary_outcomes).toMatchObject({
       substitute_beneficiaries: "not decided",

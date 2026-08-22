@@ -32,6 +32,17 @@ export const PlanningBaselineSchema = z.object({
 });
 export type PlanningBaseline = z.infer<typeof PlanningBaselineSchema>;
 
+export const PlanningSynthesisSchema = z.object({
+  current_and_projected_estate_range: z.string().min(1),
+  lifetime_security_boundary: z.string().min(1),
+  preliminary_transfer_capacity: z.string().min(1),
+  potential_transfer_tax_exposure: z.string().min(1),
+  liquidity_and_concentration_considerations: z.string().min(1),
+  material_appreciation_exposure: NullableText,
+  confirmation_dependencies: z.array(z.string().min(1)),
+});
+export type PlanningSynthesis = z.infer<typeof PlanningSynthesisSchema>;
+
 export const BeneficiaryOutcomesSchema = z.object({
   intended_beneficiaries: NullableText,
   substitute_beneficiaries: NullableText,
@@ -143,6 +154,7 @@ export const BlueprintStateSchema = z.object({
   current_gate: BlueprintGateSchema,
   completed_gates: z.array(z.number().int().min(1).max(5)),
   planning_baseline: PlanningBaselineSchema,
+  planning_synthesis: PlanningSynthesisSchema.nullable(),
   evidence: EvidenceStateSchema,
   beneficiary_outcomes: BeneficiaryOutcomesSchema,
   fiduciary_continuity_outcomes: FiduciaryContinuityOutcomesSchema,
@@ -249,6 +261,87 @@ function planningBaselineEvidenceTrigger(baseline: PlanningBaseline) {
   );
 }
 
+function createPlanningSynthesis(
+  baseline: PlanningBaseline,
+  evidenceTriggered: boolean,
+): PlanningSynthesis {
+  const value = (input: string | null) => input?.trim() || "not assessed";
+  const assetContext = [
+    baseline.material_assets_range,
+    baseline.assets_counted_toward_floor,
+    baseline.retained_control_requirement,
+  ]
+    .filter((input): input is string => answered(input))
+    .join("; ");
+  const confirmationDependencies = [
+    "Estate-planning counsel and tax advisers must confirm transfer-tax exposure under then-current law.",
+    "Qualified advisers must confirm valuation, liquidity, concentration, and transfer capacity before implementation.",
+  ];
+  const unresolved = [
+    ["material asset range", baseline.material_assets_range],
+    ["liability range", baseline.liabilities_range],
+    ["expected inheritance", baseline.expected_inheritance_range],
+    ["lifetime-security floor", baseline.lifetime_security_floor],
+    ["assets counted toward the floor", baseline.assets_counted_toward_floor],
+    ["retained-control requirement", baseline.retained_control_requirement],
+    ["extraordinary future obligations", baseline.extraordinary_future_obligations],
+  ]
+    .filter(([, input]) => /^(unknown|not decided)$/i.test(value(input)))
+    .map(([label]) => label);
+  if (unresolved.length) {
+    confirmationDependencies.push(
+      `Confirm unresolved planning inputs: ${unresolved.join(", ")}.`,
+    );
+  }
+  if (evidenceTriggered) {
+    confirmationDependencies.push(
+      "Confirm the governing evidence and professional treatment for the expected inheritance or external arrangement.",
+    );
+  }
+
+  return PlanningSynthesisSchema.parse({
+    current_and_projected_estate_range:
+      `Current planning range: material assets ${value(
+        baseline.material_assets_range,
+      )}; liabilities ${value(
+        baseline.liabilities_range,
+      )}. Expected inheritance for the projected range: ${value(
+        baseline.expected_inheritance_range,
+      )}.`,
+    lifetime_security_boundary:
+      `Lifetime-security floor: ${value(
+        baseline.lifetime_security_floor,
+      )}; assets counted toward it: ${value(
+        baseline.assets_counted_toward_floor,
+      )}; retained-control boundary: ${value(
+        baseline.retained_control_requirement,
+      )}; extraordinary future obligations: ${value(
+        baseline.extraordinary_future_obligations,
+      )}.`,
+    preliminary_transfer_capacity:
+      `Potential transfer capacity is limited to value, if any, above the stated lifetime-security floor (${value(
+        baseline.lifetime_security_floor,
+      )}) after liabilities (${value(
+        baseline.liabilities_range,
+      )}), retained-control needs (${value(
+        baseline.retained_control_requirement,
+      )}), and extraordinary obligations (${value(
+        baseline.extraordinary_future_obligations,
+      )}); the planning-level ranges do not support a more precise amount.`,
+    potential_transfer_tax_exposure:
+      "Potential transfer-tax exposure is not quantified from these planning-level ranges. Compare the current and projected estate range with the then-applicable exemption using professionally confirmed values.",
+    liquidity_and_concentration_considerations:
+      `Assess liquidity and concentration within the identified asset context (${assetContext}) while preserving the lifetime-security and retained-control boundaries; no account-level concentration is assumed.`,
+    material_appreciation_exposure:
+      /(business|private|real estate|property|residence|stock|equity|digital|growth|appreciat|volatile|illiquid)/i.test(
+        assetContext,
+      )
+        ? `Potential material appreciation exposure may exist within the identified asset context (${assetContext}); no appreciation rate or value is assumed.`
+        : null,
+    confirmation_dependencies: confirmationDependencies,
+  });
+}
+
 export function createInitialBlueprintState(
   record: MatterOpeningRecord,
   seed: Partial<{
@@ -286,6 +379,7 @@ export function createInitialBlueprintState(
       exposure_summary: null,
       ...seed.planningBaseline,
     },
+    planning_synthesis: null,
     evidence: {
       triggered,
       planning_question: triggered
@@ -414,6 +508,10 @@ export function evaluateBlueprint(
         ...state,
         current_gate: 3,
         completed_gates: [...new Set([...state.completed_gates, 2])],
+        planning_synthesis: createPlanningSynthesis(
+          state.planning_baseline,
+          evidenceTriggered,
+        ),
         evidence: evidenceTriggered
           ? {
               ...state.evidence,
