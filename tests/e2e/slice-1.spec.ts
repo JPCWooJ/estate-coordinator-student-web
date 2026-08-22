@@ -72,11 +72,11 @@ test("continuous priorities-to-Blueprint handoff saves, clarifies, corrects, and
   await page.goto(`/matter/${created.body.id}`);
   await expect(
     page.getByText(
-      "Plan on approximately 10 minutes to complete this conversation.",
+      "In approximately 10 minutes, this conversation will help us understand what matters most, the people you want to protect, and your current planning.",
       { exact: true },
     ),
   ).toBeVisible();
-  await page.getByRole("button", { name: "Begin conversation" }).click();
+  await page.getByRole("button", { name: "Begin", exact: true }).click();
 
   const clarification = await answer(page, "I need help framing this.");
   expect(clarification.matter.workflowState.step).toBe("MO01_OUTCOMES");

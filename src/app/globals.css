@@ -10,6 +10,7 @@
   --canvas: #f2f3ee;
   --line: #d8ddd7;
   --gold: #b78a45;
+  --gold-text: #8a6a32;
   --error: #9f2f2f;
   --white: #ffffff;
 }
@@ -107,7 +108,7 @@ h2 {
 
 .eyebrow {
   margin-bottom: 16px;
-  color: var(--gold);
+  color: var(--gold-text);
   font-size: 0.72rem;
   font-weight: 700;
   letter-spacing: 0.14em;
@@ -170,10 +171,12 @@ h2 {
 }
 
 .auth-panel {
+  position: relative;
   display: flex;
+  min-width: 0;
   flex-direction: column;
   justify-content: center;
-  padding: clamp(40px, 8vw, 120px);
+  padding: clamp(96px, 8vw, 120px) clamp(40px, 7vw, 104px) clamp(48px, 7vw, 96px);
   background: var(--paper);
 }
 
@@ -182,13 +185,18 @@ h2 {
   top: 32px;
 }
 
+.auth-content {
+  width: min(100%, 720px);
+}
+
 .auth-panel h1 {
-  margin-bottom: 24px;
+  margin-bottom: 20px;
+  font-size: clamp(2.75rem, 5vw, 4.7rem);
 }
 
 .lede {
-  max-width: 620px;
-  margin-bottom: 36px;
+  max-width: 680px;
+  margin-bottom: 32px;
   color: var(--muted);
   font-size: 1.08rem;
 }
@@ -251,10 +259,7 @@ h2 {
 }
 
 .auth-aside {
-  display: flex;
-  flex-direction: column;
-  justify-content: center;
-  gap: 54px;
+  min-width: 0;
   padding: clamp(36px, 6vw, 88px);
   color: #f4f3ee;
   background:
@@ -262,18 +267,47 @@ h2 {
     var(--forest);
 }
 
-.auth-aside > div {
-  max-width: 360px;
-  padding-left: 18px;
-  border-left: 1px solid rgba(255, 255, 255, 0.24);
+.auth-aside-inner {
+  display: grid;
+  min-height: 100%;
+  align-content: center;
+  gap: 36px;
 }
 
-.auth-aside h2 {
-  margin-bottom: 8px;
-  font-size: 1.3rem;
+.auth-aside-title {
+  max-width: 420px;
+  margin-bottom: 0;
+  font-size: clamp(1.9rem, 3.4vw, 3rem);
+  line-height: 1.1;
 }
 
-.auth-aside p {
+.auth-steps {
+  display: grid;
+  max-width: 430px;
+  gap: 28px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.auth-steps li {
+  display: grid;
+  grid-template-columns: 34px minmax(0, 1fr);
+  gap: 14px;
+  padding-top: 18px;
+  border-top: 1px solid rgba(255, 255, 255, 0.24);
+}
+
+.auth-steps h3 {
+  margin-bottom: 6px;
+  color: #f4f3ee;
+  font-family: Georgia, "Times New Roman", serif;
+  font-size: 1.25rem;
+  font-weight: 500;
+  letter-spacing: -0.015em;
+}
+
+.auth-steps p {
   margin-bottom: 0;
   color: #cddbd5;
   font-size: 0.92rem;
@@ -506,6 +540,15 @@ h2 {
   min-width: 0;
 }
 
+.conversation-start {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.conversation-start .active-task {
+  width: min(100%, 820px);
+  justify-self: center;
+}
+
 .conversation-history {
   display: grid;
   grid-column: 1;
@@ -682,6 +725,7 @@ h2 {
 }
 
 .review-card,
+.start-card,
 .endpoint-card,
 .stop-card {
   border: 1px solid var(--line);
@@ -690,7 +734,48 @@ h2 {
   background: var(--paper);
 }
 
+.start-card {
+  padding: clamp(28px, 6vw, 56px);
+  box-shadow: 0 18px 60px rgba(34, 51, 45, 0.08);
+}
+
+.start-card h2 {
+  margin-bottom: 20px;
+  font-size: clamp(2.15rem, 5vw, 3.6rem);
+}
+
+.start-copy {
+  display: grid;
+  max-width: 680px;
+  gap: 14px;
+  color: var(--muted);
+}
+
+.start-copy p {
+  margin-bottom: 0;
+}
+
+.start-copy p:first-child {
+  color: var(--ink);
+  font-size: 1.08rem;
+}
+
+.start-action {
+  display: flex;
+  justify-content: center;
+  margin-top: 32px;
+  padding-top: 26px;
+  border-top: 1px solid var(--line);
+}
+
+.start-button {
+  width: min(100%, 240px);
+  min-height: 54px;
+  font-size: 1rem;
+}
+
 .review-card > p,
+.start-card > p,
 .endpoint-card > p,
 .stop-card > p {
   color: var(--muted);
@@ -822,8 +907,8 @@ td {
   }
 
   .auth-panel {
-    min-height: 720px;
-    padding: 100px 28px 48px;
+    min-height: auto;
+    padding: 100px 28px 52px;
   }
 
   .auth-panel .brand {
@@ -831,8 +916,12 @@ td {
   }
 
   .auth-aside {
-    gap: 30px;
     padding: 46px 28px;
+  }
+
+  .auth-aside-inner {
+    min-height: auto;
+    gap: 30px;
   }
 
   .conversation {
@@ -878,6 +967,18 @@ td {
   .matter-main {
     width: min(100% - 28px, 1180px);
     padding-top: 34px;
+  }
+
+  .auth-panel h1 {
+    font-size: clamp(2.45rem, 12vw, 3.5rem);
+  }
+
+  .auth-aside-title {
+    font-size: 2rem;
+  }
+
+  .auth-steps {
+    gap: 22px;
   }
 
   .matter-card-action {

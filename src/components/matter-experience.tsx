@@ -98,8 +98,8 @@ export function MatterExperience({ matterId }: { matterId: string }) {
   }, [matterId, router]);
 
   useEffect(() => {
-    if (matter?.blueprintState) activeTaskRef.current?.focus();
-  }, [matter?.blueprintState]);
+    if (matter?.blueprintState || interviewStarted) activeTaskRef.current?.focus();
+  }, [interviewStarted, matter?.blueprintState]);
 
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -283,7 +283,10 @@ export function MatterExperience({ matterId }: { matterId: string }) {
           </section>
         ) : (
           <div className="workspace-grid">
-            <section className="conversation" aria-label="Estate planning conversation">
+            <section
+              className={`conversation${isStartingInterview ? " conversation-start" : ""}`}
+              aria-label="Estate planning conversation"
+            >
               <div className="active-task">
               {isReview ? (
                 <section className="review-card" aria-labelledby="review-title">
@@ -316,27 +319,33 @@ export function MatterExperience({ matterId }: { matterId: string }) {
                   )}
                 </section>
               ) : isStartingInterview ? (
-                <section className="review-card" aria-labelledby="start-title">
+                <section className="start-card" aria-labelledby="start-title">
                   <div className="eyebrow">Before you begin</div>
                   <h2 id="start-title">Estate Planning Priorities</h2>
-                  <p>
-                    This short guided conversation gathers what matters most, who
-                    should be protected, and the context your Estate Blueprint needs.
-                  </p>
-                  <p>Plan on approximately 10 minutes to complete this conversation.</p>
-                  <ul>
-                    <li>There are no right or wrong answers.</li>
-                    <li>Answer in ordinary language.</li>
-                    <li>You can say you are unsure or not decided.</li>
-                    <li>A brief follow-up appears only when something material is unclear.</li>
-                  </ul>
-                  <button
-                    className="button button-primary"
-                    onClick={() => setInterviewStarted(true)}
-                    style={{ display: "block", margin: "0 auto" }}
-                  >
-                    Begin conversation
-                  </button>
+                  <div className="start-copy">
+                    <p>
+                      In approximately 10 minutes, this conversation will help us
+                      understand what matters most, the people you want to protect,
+                      and your current planning.
+                    </p>
+                    <p>
+                      There are no right or wrong answers. Answer in ordinary language,
+                      and say when you are unsure or have not decided.
+                    </p>
+                    <p>
+                      Your answers become the foundation for your Estate Blueprint and
+                      the planning decisions that follow.
+                    </p>
+                  </div>
+                  <div className="start-action">
+                    <button
+                      type="button"
+                      className="button button-primary start-button"
+                      onClick={() => setInterviewStarted(true)}
+                    >
+                      Begin
+                    </button>
+                  </div>
                 </section>
               ) : blueprintInteraction?.kind === "evidence" ? (
                 <section
@@ -447,10 +456,12 @@ export function MatterExperience({ matterId }: { matterId: string }) {
               <p className="error-text" role="alert">{error}</p>
               </div>
 
-              <aside className="workspace-aside">
-                <h2>What to Expect</h2>
-                <p>{whatToExpect(matter)}</p>
-              </aside>
+              {!isStartingInterview ? (
+                <aside className="workspace-aside">
+                  <h2>What to Expect</h2>
+                  <p>{whatToExpect(matter)}</p>
+                </aside>
+              ) : null}
 
               <div className="conversation-history" aria-live="polite">
                 {visibleMessages.map((message) => (
