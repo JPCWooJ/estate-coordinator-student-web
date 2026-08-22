@@ -457,20 +457,6 @@ export function MatterExperience({ matterId }: { matterId: string }) {
             <aside className="workspace-aside">
               <h2>What to Expect</h2>
               <p>{whatToExpect(matter)}</p>
-              <div className="boundary-note">
-                <strong>Professional boundary</strong>
-                <p>
-                  This tool captures planning context and priorities only. It does
-                  not provide legal, tax, or investment conclusions.
-                </p>
-              </div>
-              <div className="privacy-note">
-                <strong>Protecting your information</strong>
-                <p>
-                  Never enter credentials, private keys, seed phrases, or full
-                  account identifiers.
-                </p>
-              </div>
             </aside>
           </div>
         )}

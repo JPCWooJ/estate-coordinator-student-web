@@ -670,18 +670,6 @@ h2 {
   font-size: 0.82rem;
 }
 
-.boundary-note,
-.privacy-note {
-  margin-top: 18px;
-  padding-top: 18px;
-  border-top: 1px solid #cbd4cc;
-}
-
-.boundary-note strong,
-.privacy-note strong {
-  font-size: 0.78rem;
-}
-
 .review-card,
 .endpoint-card,
 .stop-card {

@@ -99,6 +99,13 @@ test("uninterrupted zero-turn foundation reaches and completes Blueprint Decisio
   await expect(page.getByText("Blueprint Decisions", { exact: true }).first()).toBeVisible();
   await expect(page.getByText("A focused evidence check")).toHaveCount(0);
   await expect(page.getByText(/Stage\s+[1-7]/i)).toHaveCount(0);
+  const orientation = page.getByRole("complementary");
+  await expect(orientation.getByRole("heading", { name: "What to Expect" })).toBeVisible();
+  await expect(orientation).toContainText(
+    "The Estate Coordinator will recommend a starting point before asking for your response.",
+  );
+  await expect(orientation).not.toContainText("Professional boundary");
+  await expect(orientation).not.toContainText("Protecting your information");
   await expectViewportFit(page);
 
   const beneficiary = await answer(page, "I accept this recommendation.");
