@@ -1,5 +1,7 @@
 import { z } from "zod";
 
+import { GeneratedResponseMetadataSchema } from "./generated-response";
+
 export const WORKFLOW_VERSION = "EC_MATTER_OPENING_0.4";
 
 export const OutcomeCodeSchema = z.enum([
@@ -126,6 +128,7 @@ export const MatterOpeningRecordSchema = z.object({
   house_in_order_concern: z.string(),
   principal_confirmed: z.enum(["yes", "no"]),
   confirmation_date: z.string(),
+  generated_responses: z.array(GeneratedResponseMetadataSchema).optional(),
 });
 export type MatterOpeningRecord = z.infer<typeof MatterOpeningRecordSchema>;
 
@@ -243,6 +246,7 @@ export function createInitialRecord(matterId: string): MatterOpeningRecord {
     house_in_order_concern: "unknown",
     principal_confirmed: "no",
     confirmation_date: "unknown",
+    generated_responses: [],
   };
 }
 

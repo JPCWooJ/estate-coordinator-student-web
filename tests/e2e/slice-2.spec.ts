@@ -141,11 +141,27 @@ test("uninterrupted zero-turn foundation reaches and completes Blueprint Decisio
   ).toBeVisible();
   await expectViewportFit(page);
 
-  const completed = await answer(page, "I accept this starting structure.");
+  const continuity = await answer(page, "I accept this starting structure.");
+  expect(continuity.matter.decisions).toHaveLength(2);
+  await expect(
+    page.getByRole("heading", {
+      name: "Preserve specialized assets without overloading general fiduciary roles",
+    }),
+  ).toBeVisible();
+
+  const specialAsset = await answer(page, "I accept this separate treatment.");
+  expect(specialAsset.matter.decisions).toHaveLength(3);
+  await expect(
+    page.getByRole("heading", {
+      name: "Match beneficiary participation to demonstrated readiness",
+    }),
+  ).toBeVisible();
+
+  const completed = await answer(page, "I accept this readiness progression.");
   await expect(
     page.getByRole("heading", { name: "Your Blueprint decisions are saved" }),
   ).toBeVisible();
-  expect(completed.matter.decisions).toHaveLength(2);
+  expect(completed.matter.decisions).toHaveLength(4);
   expect(completed.matter.blueprintState.completed_gates).toContain(5);
   await expect(page.getByText(/Stage\s+[1-7]/i)).toHaveCount(0);
   await expect(page.locator("body")).not.toContainText("Final Review");

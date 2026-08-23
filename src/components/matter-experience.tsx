@@ -200,8 +200,12 @@ export function MatterExperience({ matterId }: { matterId: string }) {
   }
 
   const isReview = !matter.blueprintState && matter.workflowState.step === "MO08_CONFIRM";
-  const isStopped = matter.workflowState.step === "STOPPED";
   const blueprintInteraction = matter.blueprintState?.interaction ?? null;
+  const blueprintStop =
+    matter.blueprintState?.stop ??
+    (blueprintInteraction?.kind === "stop" ? blueprintInteraction.stop : null);
+  const isStopped =
+    matter.workflowState.step === "STOPPED" || Boolean(blueprintStop);
   const isComplete = blueprintInteraction?.kind === "complete";
   const lastAssistantMessage = matter.messages.at(-1);
   const isStartingInterview =
@@ -277,8 +281,11 @@ export function MatterExperience({ matterId }: { matterId: string }) {
           <section className="stop-card" aria-labelledby="stop-title">
             <div className="eyebrow">Professional follow-up required</div>
             <h2 id="stop-title">A qualified professional should review this next</h2>
-            <p>{matter.workflowState.stop?.reason}</p>
-            <strong>{matter.workflowState.stop?.immediate_action}</strong>
+            <p>{blueprintStop?.reason ?? matter.workflowState.stop?.reason}</p>
+            <strong>
+              {blueprintStop?.immediate_action ??
+                matter.workflowState.stop?.immediate_action}
+            </strong>
             <p>Your last accepted work remains saved.</p>
           </section>
         ) : (

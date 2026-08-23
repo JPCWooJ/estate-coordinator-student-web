@@ -213,6 +213,29 @@ export function interpretSyntheticBlueprintAnswer(input: {
     beneficiary_outcomes: null,
     fiduciary_continuity_outcomes: null,
   };
+  if (input.answer === "My authority to act is disputed.") {
+    return {
+      outcome: "stop",
+      acknowledgement: "",
+      clarification_question: null,
+      patch: emptyPatch,
+      stop: {
+        category: "identity_or_authority",
+        reason: input.answer,
+        affected_objects: ["Estate Blueprint"],
+        resolution_condition:
+          "The principal's identity and decision authority must be confirmed.",
+        assigned_owner: "Estate-planning counsel",
+        escalation_path:
+          "Pause the Blueprint and have estate-planning counsel resolve authority before continuation.",
+        evidence_required_to_resume: [
+          "Professional confirmation of the principal's identity and decision authority",
+        ],
+        immediate_action:
+          "Contact estate-planning counsel to confirm authority before continuing.",
+      },
+    };
+  }
   if (input.answer === "I need a little help with that.") {
     return {
       outcome: "clarification",
@@ -220,6 +243,7 @@ export function interpretSyntheticBlueprintAnswer(input: {
       clarification_question:
         "What part of this outcome is most important for your plan to preserve?",
       patch: emptyPatch,
+      stop: null,
     };
   }
   if (input.state.current_gate === 2) {
@@ -242,6 +266,7 @@ export function interpretSyntheticBlueprintAnswer(input: {
             "education support for two grandchildren",
         },
       },
+      stop: null,
     };
   }
   if (input.state.current_gate === 4) {
@@ -263,6 +288,7 @@ export function interpretSyntheticBlueprintAnswer(input: {
             "the family business should remain under coordinated management",
         },
       },
+      stop: null,
     };
   }
   return {
@@ -283,6 +309,7 @@ export function interpretSyntheticBlueprintAnswer(input: {
           "larger participation after financial education and demonstrated judgment",
       },
     },
+    stop: null,
   };
 }
 
@@ -304,6 +331,36 @@ export function generateSyntheticRecommendation(input: {
         "Does this recommended structure fit your objectives, or would it prevent a personal outcome you want?",
     };
   }
+  if (input.domain === "special_asset") {
+    return {
+      objective: "Preserve specialized assets without overloading general fiduciary roles",
+      starting_point:
+        "We recommend a separate continuity and oversight plan for the identified special assets, with a qualified manager or adviser and a named backup coordinated with the fiduciary structure.",
+      rationale:
+        "Special assets can require operating knowledge, access, valuation, or succession planning that differs from ordinary trust administration.",
+      alternative_or_tradeoff:
+        "Using the general fiduciary alone is simpler, but it may leave specialized operating responsibilities without the right expertise.",
+      open_confirmation:
+        "Counsel and the relevant asset advisers should confirm authority, succession, and operating requirements.",
+      response_question:
+        "Does this separate treatment fit the special assets or purposes you identified?",
+    };
+  }
+  if (input.domain === "readiness") {
+    return {
+      objective: "Match beneficiary participation to demonstrated readiness",
+      starting_point:
+        "We recommend increasing beneficiary participation as financial education, judgment, and practical readiness are demonstrated, without requiring a full transfer at a fixed age.",
+      rationale:
+        "This preserves protection while giving beneficiaries a clear path toward appropriate participation and responsibility.",
+      alternative_or_tradeoff:
+        "Fixed-age authority is simpler to administer, but it may not match actual readiness.",
+      open_confirmation:
+        "Counsel should confirm how the readiness standard and decision authority are expressed in the final documents.",
+      response_question:
+        "Does this readiness progression fit the responsibility you want beneficiaries to assume?",
+    };
+  }
   return {
     objective: "Keep essential responsibilities and decision-making continuous",
     starting_point:
@@ -323,6 +380,31 @@ export function interpretSyntheticRecommendationResponse(input: {
   answer: string;
   state: BlueprintState;
 }): RecommendationResponse {
+  if (input.answer === "Someone is pressuring me to accept this.") {
+    return {
+      outcome: "stop",
+      acknowledgement: "",
+      clarification_question: null,
+      disposition: null,
+      modification: null,
+      open_confirmation: null,
+      stop: {
+        category: "capacity_or_voluntariness",
+        reason: input.answer,
+        affected_objects: ["Active Blueprint recommendation"],
+        resolution_condition:
+          "The principal's decision must be confirmed as voluntary and free from coercion.",
+        assigned_owner: "Estate-planning counsel",
+        escalation_path:
+          "Pause the Blueprint and refer the concern to estate-planning counsel for private review.",
+        evidence_required_to_resume: [
+          "Professional confirmation that the principal can proceed voluntarily",
+        ],
+        immediate_action:
+          "Pause this decision and contact estate-planning counsel for a private review.",
+      },
+    };
+  }
   if (input.answer === "Please explain the tradeoff.") {
     return {
       outcome: "clarification",
@@ -332,6 +414,7 @@ export function interpretSyntheticRecommendationResponse(input: {
       disposition: null,
       modification: null,
       open_confirmation: null,
+      stop: null,
     };
   }
   const normalized = input.answer.toLowerCase();
@@ -354,6 +437,7 @@ export function interpretSyntheticRecommendationResponse(input: {
     modification: disposition === "modify" ? input.answer : null,
     open_confirmation:
       disposition === "confirmation_required" ? input.answer : null,
+    stop: null,
   };
 }
 

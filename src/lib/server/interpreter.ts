@@ -17,6 +17,10 @@ import {
   RecommendationResponseSchema,
 } from "@/lib/domain/blueprint";
 import {
+  GeneratedResponseOperation,
+  WithGeneratedResponse,
+} from "@/lib/domain/generated-response";
+import {
   Interpretation,
   InterpretationSchema,
   MatterOpeningRecord,
@@ -36,6 +40,22 @@ import {
 
 const MODEL = "gpt-5.6";
 
+function withGeneratedResponse<T extends object>(
+  value: T,
+  response: { id: string; model: string },
+  operation: GeneratedResponseOperation,
+): WithGeneratedResponse<T> {
+  return {
+    ...value,
+    generation_metadata: {
+      operation,
+      configured_model: MODEL,
+      returned_model: response.model,
+      response_id: response.id,
+    },
+  };
+}
+
 function client() {
   const apiKey = process.env.OPENAI_API_KEY;
   if (!apiKey) throw new Error("The Estate Coordinator service is not configured.");
@@ -47,7 +67,7 @@ export async function interpretMatterOpeningAnswer(input: {
   answer: string;
   record: MatterOpeningRecord;
   state: WorkflowState;
-}): Promise<Interpretation> {
+}): Promise<WithGeneratedResponse<Interpretation>> {
   if (syntheticModeEnabled()) return interpretSyntheticAnswer(input);
 
   const response = await client().responses.parse({
@@ -77,14 +97,18 @@ export async function interpretMatterOpeningAnswer(input: {
   if (!response.output_parsed) {
     throw new Error("The Estate Coordinator could not interpret that response.");
   }
-  return response.output_parsed;
+  return withGeneratedResponse(
+    response.output_parsed,
+    response,
+    "matter_opening_interpretation",
+  );
 }
 
 export async function interpretPlanningSummaryCorrection(input: {
   correction: string;
   activeQuestion: string | null;
   record: MatterOpeningRecord;
-}): Promise<PlanningSummaryCorrection> {
+}): Promise<WithGeneratedResponse<PlanningSummaryCorrection>> {
   if (syntheticModeEnabled()) return interpretSyntheticCorrection(input);
 
   const response = await client().responses.parse({
@@ -116,13 +140,17 @@ export async function interpretPlanningSummaryCorrection(input: {
   if (!response.output_parsed) {
     throw new Error("The Estate Coordinator could not interpret that correction.");
   }
-  return response.output_parsed;
+  return withGeneratedResponse(
+    response.output_parsed,
+    response,
+    "planning_summary_correction",
+  );
 }
 
 export async function interpretBlueprintAnswer(input: {
   answer: string;
   state: BlueprintState;
-}): Promise<BlueprintAnswerInterpretation> {
+}): Promise<WithGeneratedResponse<BlueprintAnswerInterpretation>> {
   if (syntheticModeEnabled()) return interpretSyntheticBlueprintAnswer(input);
 
   const response = await client().responses.parse({
@@ -132,7 +160,7 @@ export async function interpretBlueprintAnswer(input: {
       {
         role: "system",
         content:
-          "Interpret one Estate Blueprint fact-or-outcome answer. Populate only the structured fields requested by the active question and supported by the answer. One narrative answer may populate multiple requested fields. Accept unknown, not decided, not applicable, and none as explicit values. Ask one concise clarification only when a missing ambiguity could materially change the current recommendation. Do not advance a gate, choose a planning structure, or invent facts.",
+          "Interpret one Estate Blueprint fact-or-outcome answer. Return exactly one outcome: accepted, clarification, or stop. Populate only the structured fields requested by the active question and supported by the answer. One narrative answer may populate multiple requested fields. Accept unknown, not decided, not applicable, and none as explicit values. Ask one concise clarification only when a missing ambiguity could materially change the current recommendation. Use stop when responsible continuation is prevented by identity or authority conflict, a representation conflict, apparent incapacity or voluntariness concern, abuse or exploitation, a disputed instrument or fiduciary authority, a missing controlling source or material source discrepancy, a rejected instrument, stale or mismatched authority, irreversible action without approval, professional legal or tax judgment outside Estate Coordinator authority, privacy or permission limits, execution-control requirements, or another unresolved outcome-changing dependency. For stop, provide the complete stop record and leave every patch field null. The application, not the model, controls progression. Do not advance a gate, choose a planning structure, or invent facts.",
       },
       {
         role: "user",
@@ -159,7 +187,11 @@ export async function interpretBlueprintAnswer(input: {
   if (!response.output_parsed) {
     throw new Error("The Estate Coordinator could not interpret that response.");
   }
-  return response.output_parsed;
+  return withGeneratedResponse(
+    response.output_parsed,
+    response,
+    "blueprint_answer_interpretation",
+  );
 }
 
 export async function generateBlueprintRecommendation(input: {
@@ -167,7 +199,7 @@ export async function generateBlueprintRecommendation(input: {
   state: BlueprintState;
   openingRecord: MatterOpeningRecord;
   decisions: DecisionRecord[];
-}): Promise<RecommendationContent> {
+}): Promise<WithGeneratedResponse<RecommendationContent>> {
   if (syntheticModeEnabled()) return generateSyntheticRecommendation(input);
 
   const response = await client().responses.parse({
@@ -213,13 +245,17 @@ export async function generateBlueprintRecommendation(input: {
   if (!response.output_parsed) {
     throw new Error("The Estate Coordinator could not prepare that recommendation.");
   }
-  return response.output_parsed;
+  return withGeneratedResponse(
+    response.output_parsed,
+    response,
+    "blueprint_recommendation",
+  );
 }
 
 export async function interpretRecommendationResponse(input: {
   answer: string;
   state: BlueprintState;
-}): Promise<RecommendationResponse> {
+}): Promise<WithGeneratedResponse<RecommendationResponse>> {
   if (syntheticModeEnabled()) {
     return interpretSyntheticRecommendationResponse(input);
   }
@@ -230,7 +266,7 @@ export async function interpretRecommendationResponse(input: {
       {
         role: "system",
         content:
-          "Interpret the principal's response to one Estate Coordinator recommendation. Classify it as accept, modify, alternative requested, defer, reject, or confirmation required. Capture only the material modification or open professional confirmation. Ask one concise clarification only when the response cannot be classified responsibly. Do not change the recommendation, advance workflow, or infer unsupported facts.",
+          "Interpret the principal's response to one Estate Coordinator recommendation. Return exactly one outcome: accepted, clarification, or stop. For an accepted outcome, classify the response as accept, modify, alternative requested, defer, reject, or confirmation required and capture only the material modification or open professional confirmation. Ask one concise clarification only when the response cannot be classified responsibly. Use stop when responsible continuation is prevented by identity or authority conflict, a representation conflict, apparent incapacity or voluntariness concern, abuse or exploitation, a disputed instrument or fiduciary authority, a missing controlling source or material source discrepancy, a rejected instrument, stale or mismatched authority, irreversible action without approval, professional legal or tax judgment outside Estate Coordinator authority, privacy or permission limits, execution-control requirements, or another unresolved outcome-changing dependency. For stop, provide the complete stop record and leave disposition, modification, and open confirmation null. The application, not the model, controls progression. Do not change the recommendation, advance workflow, or infer unsupported facts.",
       },
       {
         role: "user",
@@ -250,14 +286,18 @@ export async function interpretRecommendationResponse(input: {
   if (!response.output_parsed) {
     throw new Error("The Estate Coordinator could not interpret that decision.");
   }
-  return response.output_parsed;
+  return withGeneratedResponse(
+    response.output_parsed,
+    response,
+    "blueprint_recommendation_response",
+  );
 }
 
 export async function interpretBlueprintEvidence(input: {
   filename: string;
   relevantText: string;
   planningQuestion: string;
-}): Promise<EvidenceTreatment> {
+}): Promise<WithGeneratedResponse<EvidenceTreatment>> {
   if (syntheticModeEnabled()) return interpretSyntheticEvidence(input);
   const response = await client().responses.parse({
     model: MODEL,
@@ -284,5 +324,9 @@ export async function interpretBlueprintEvidence(input: {
   if (!response.output_parsed) {
     throw new Error("The evidence could not be processed.");
   }
-  return response.output_parsed;
+  return withGeneratedResponse(
+    response.output_parsed,
+    response,
+    "blueprint_evidence_treatment",
+  );
 }

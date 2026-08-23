@@ -6,7 +6,10 @@ import {
   RecommendationContent,
 } from "@/lib/domain/blueprint";
 import { createInitialRecord } from "@/lib/domain/matter-opening";
-import { generateBlueprintRecommendation } from "./interpreter";
+import {
+  generateBlueprintRecommendation,
+  interpretBlueprintAnswer,
+} from "./interpreter";
 
 const mocks = vi.hoisted(() => ({
   parse: vi.fn(),
@@ -35,7 +38,11 @@ const recommendation: RecommendationContent = {
 beforeEach(() => {
   vi.clearAllMocks();
   mocks.syntheticModeEnabled.mockReturnValue(false);
-  mocks.parse.mockResolvedValue({ output_parsed: recommendation });
+  mocks.parse.mockResolvedValue({
+    id: "resp_recommendation",
+    model: "gpt-5.6-2026-08-07",
+    output_parsed: recommendation,
+  });
   process.env.OPENAI_API_KEY = "test-key";
 });
 
@@ -65,7 +72,7 @@ describe("Blueprint recommendation context", () => {
       },
     });
 
-    await generateBlueprintRecommendation({
+    const generated = await generateBlueprintRecommendation({
       domain: "beneficiary",
       state: downstream,
       openingRecord: opening,
@@ -84,5 +91,52 @@ describe("Blueprint recommendation context", () => {
       "contingency",
       "working_scenario",
     ]);
+    expect(generated.generation_metadata).toEqual({
+      operation: "blueprint_recommendation",
+      configured_model: "gpt-5.6",
+      returned_model: "gpt-5.6-2026-08-07",
+      response_id: "resp_recommendation",
+    });
+  });
+
+  it("retains the exact API-returned model identity for a Blueprint interpretation", async () => {
+    mocks.parse.mockResolvedValueOnce({
+      id: "resp_interpretation",
+      model: "gpt-5.6-2026-08-07",
+      output_parsed: {
+        outcome: "accepted",
+        acknowledgement: "Saved.",
+        clarification_question: null,
+        patch: {
+          planning_baseline: { lifetime_security_floor: "$5 million" },
+          beneficiary_outcomes: null,
+          fiduciary_continuity_outcomes: null,
+        },
+        stop: null,
+      },
+    });
+    const state = BlueprintStateSchema.parse({
+      ...createInitialBlueprintState(
+        createInitialRecord("aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"),
+      ),
+      interaction: {
+        kind: "question",
+        key: "planning_baseline",
+        prompt: "What lifetime-security floor should planning preserve?",
+        helper: null,
+      },
+    });
+
+    const interpreted = await interpretBlueprintAnswer({
+      answer: "$5 million",
+      state,
+    });
+
+    expect(interpreted.generation_metadata).toEqual({
+      operation: "blueprint_answer_interpretation",
+      configured_model: "gpt-5.6",
+      returned_model: "gpt-5.6-2026-08-07",
+      response_id: "resp_interpretation",
+    });
   });
 });

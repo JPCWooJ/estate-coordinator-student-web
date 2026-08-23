@@ -4,10 +4,12 @@ import { createInitialRecord, MatterOpeningRecord } from "./matter-opening";
 import {
   applyBlueprintAnswer,
   applyEvidenceTreatment,
+  applyRecommendationResponse,
   BlueprintAnswerInterpretation,
   buildDecisionRecord,
   createInitialBlueprintState,
   DecisionDisposition,
+  DecisionRecordSchema,
   evaluateBlueprint,
   BlueprintStateSchema,
   presentRecommendation,
@@ -75,13 +77,37 @@ const recommendation: RecommendationContent = {
   response_question: "Does this fit your objectives?",
 };
 
+const stopDetails = {
+  category: "identity_or_authority" as const,
+  reason: "The authority to make this decision is disputed.",
+  affected_objects: ["Estate Blueprint"],
+  resolution_condition: "Decision authority is professionally confirmed.",
+  assigned_owner: "Estate-planning counsel",
+  escalation_path: "Pause and refer the authority question to counsel.",
+  evidence_required_to_resume: ["Counsel confirmation of decision authority"],
+  immediate_action: "Contact estate-planning counsel before continuing.",
+};
+
 function acceptedPatch(patch: BlueprintAnswerInterpretation["patch"]): BlueprintAnswerInterpretation {
   return {
     outcome: "accepted",
     acknowledgement: "Saved.",
     clarification_question: null,
     patch,
+    stop: null,
   };
+}
+
+function acceptedRecommendation(state: ReturnType<typeof presentRecommendation>) {
+  return buildDecisionRecord(state, {
+    outcome: "accepted",
+    acknowledgement: "Saved.",
+    clarification_question: null,
+    disposition: "accept",
+    modification: null,
+    open_confirmation: null,
+    stop: null,
+  });
 }
 
 describe("Estate Blueprint internal gates 1-5", () => {
@@ -429,6 +455,7 @@ describe("Estate Blueprint internal gates 1-5", () => {
       disposition: "accept",
       modification: null,
       open_confirmation: null,
+      stop: null,
     });
     const stage5 = evaluateBlueprint(
       { ...state, interaction: null },
@@ -509,6 +536,7 @@ describe("Estate Blueprint internal gates 1-5", () => {
       disposition: "accept",
       modification: null,
       open_confirmation: null,
+      stop: null,
     });
     const stage5 = evaluateBlueprint(
       { ...state, interaction: null },
@@ -565,6 +593,7 @@ describe("Estate Blueprint internal gates 1-5", () => {
       modification: disposition === "modify" ? "Use staged participation." : null,
       open_confirmation:
         disposition === "confirmation_required" ? "Confirm with counsel." : null,
+      stop: null,
     });
     expect(record.principal_response).toBe(disposition);
     expect(record.resolved).toBe(true);
@@ -583,5 +612,245 @@ describe("Estate Blueprint internal gates 1-5", () => {
     expect(resumed.state.interaction).toEqual(persisted.interaction);
     expect(resumed.state.current_gate).toBe(4);
     expect(resumed.recommendationNeeded).toBeNull();
+  });
+
+  it.each([
+    "identity_or_authority",
+    "conflict_of_interest",
+    "capacity_or_voluntariness",
+    "abuse_or_exploitation",
+    "disputed_instrument",
+    "missing_controlling_source",
+    "source_discrepancy",
+    "rejected_instrument",
+    "stale_or_mismatched_authority",
+    "irreversible_action",
+    "professional_judgment_required",
+    "privacy_or_permission",
+    "execution_control",
+    "unresolved_dependency",
+    "other",
+  ] as const)("deterministically stops a Blueprint answer for '%s'", (category) => {
+    const active = evaluateBlueprint(
+      createInitialBlueprintState(confirmedOpening()),
+      [],
+    ).state;
+    const stopped = applyBlueprintAnswer(active, {
+      outcome: "stop",
+      acknowledgement: "",
+      clarification_question: null,
+      patch: {
+        planning_baseline: null,
+        beneficiary_outcomes: null,
+        fiduciary_continuity_outcomes: null,
+      },
+      stop: { ...stopDetails, category },
+    });
+
+    expect(stopped.state.stop?.category).toBe(category);
+    expect(stopped.state.interaction).toMatchObject({
+      kind: "stop",
+      stop: { category },
+    });
+    expect(stopped.assistantMessage).toBe(stopDetails.immediate_action);
+    expect(evaluateBlueprint(stopped.state, []).recommendationNeeded).toBeNull();
+  });
+
+  it("stops a recommendation response without recording a decision", () => {
+    const active = presentRecommendation(
+      {
+        ...createInitialBlueprintState(confirmedOpening(), {
+          planningBaseline: completeBaseline,
+          beneficiaryOutcomes: completeBeneficiary,
+        }),
+        current_gate: 4,
+        phase: "BLUEPRINT_DECISIONS",
+      },
+      "beneficiary",
+      recommendation,
+    );
+    const stopped = applyRecommendationResponse(active, {
+      outcome: "stop",
+      acknowledgement: "",
+      clarification_question: null,
+      disposition: null,
+      modification: null,
+      open_confirmation: null,
+      stop: {
+        ...stopDetails,
+        category: "capacity_or_voluntariness",
+        reason: "The principal reports pressure to accept the recommendation.",
+      },
+    });
+
+    expect(stopped.decision).toBeNull();
+    expect(stopped.state.stop?.category).toBe("capacity_or_voluntariness");
+    expect(stopped.state.interaction?.kind).toBe("stop");
+  });
+
+  it("keeps ordinary clarification behavior intact after adding stop outcomes", () => {
+    const active = evaluateBlueprint(
+      createInitialBlueprintState(confirmedOpening()),
+      [],
+    ).state;
+    const clarified = applyBlueprintAnswer(active, {
+      outcome: "clarification",
+      acknowledgement: "",
+      clarification_question: "Which assets should remain under your control?",
+      patch: {
+        planning_baseline: null,
+        beneficiary_outcomes: null,
+        fiduciary_continuity_outcomes: null,
+      },
+      stop: null,
+    });
+
+    expect(clarified.state.stop).toBeNull();
+    expect(clarified.state.interaction).toMatchObject({
+      kind: "question",
+      key: "clarification",
+    });
+  });
+
+  it("uses one combined Stage 5 recommendation when fiduciary and continuity outcomes overlap", () => {
+    const initial = createInitialBlueprintState(confirmedOpening(), {
+      planningBaseline: completeBaseline,
+      beneficiaryOutcomes: completeBeneficiary,
+      fiduciaryContinuityOutcomes: {
+        ...completeFiduciary,
+        special_assets_or_purposes:
+          completeFiduciary.essential_responsibilities,
+        beneficiary_readiness: completeBeneficiary.stewardship_objectives,
+      },
+    });
+    const beneficiaryState = presentRecommendation(
+      evaluateBlueprint(initial, []).state,
+      "beneficiary",
+      recommendation,
+    );
+    const beneficiaryDecision = acceptedRecommendation(beneficiaryState);
+    const stage5 = evaluateBlueprint(
+      { ...beneficiaryState, interaction: null },
+      [beneficiaryDecision],
+    );
+
+    expect(stage5.recommendationNeeded).toBe("fiduciary_continuity");
+    const combinedState = presentRecommendation(
+      stage5.state,
+      "fiduciary_continuity",
+      recommendation,
+    );
+    const combinedDecision = acceptedRecommendation(combinedState);
+    const complete = evaluateBlueprint(
+      { ...combinedState, interaction: null },
+      [beneficiaryDecision, combinedDecision],
+    );
+
+    expect(complete.recommendationNeeded).toBeNull();
+    expect(complete.state.interaction?.kind).toBe("complete");
+  });
+
+  it("records separate Stage 5 decisions for materially distinct special-asset and readiness outcomes without repetition", () => {
+    const initial = createInitialBlueprintState(confirmedOpening(), {
+      planningBaseline: completeBaseline,
+      beneficiaryOutcomes: completeBeneficiary,
+      fiduciaryContinuityOutcomes: completeFiduciary,
+    });
+    const beneficiaryState = presentRecommendation(
+      evaluateBlueprint(initial, []).state,
+      "beneficiary",
+      recommendation,
+    );
+    const decisions = [acceptedRecommendation(beneficiaryState)];
+    let state = { ...beneficiaryState, interaction: null };
+    const expectedDomains = [
+      "fiduciary_continuity",
+      "special_asset",
+      "readiness",
+    ] as const;
+
+    for (const domain of expectedDomains) {
+      const evaluation = evaluateBlueprint(state, decisions);
+      expect(evaluation.recommendationNeeded).toBe(domain);
+      const presented = presentRecommendation(
+        evaluation.state,
+        domain,
+        recommendation,
+      );
+      decisions.push(acceptedRecommendation(presented));
+      state = { ...presented, interaction: null };
+    }
+
+    const complete = evaluateBlueprint(state, decisions);
+    expect(complete.recommendationNeeded).toBeNull();
+    expect(complete.state.interaction?.kind).toBe("complete");
+    expect(decisions.map((decision) => decision.decision_id)).toEqual([
+      "BR-004-BENEFICIARY",
+      "BR-005-FIDUCIARY-CONTINUITY",
+      "BR-005-SPECIAL-ASSET",
+      "BR-005-READINESS",
+    ]);
+    expect(evaluateBlueprint(complete.state, decisions).recommendationNeeded).toBeNull();
+  });
+
+  it("resumes a persisted Stage 5 fiduciary decision under the combined domain", () => {
+    expect(
+      DecisionRecordSchema.parse({
+        decision_id: "BR-005-FIDUCIARY-CONTINUITY",
+        domain: "fiduciary",
+        recommendation: "Use trusted family participation with an independent backup.",
+        principal_response: "accept",
+        modification: null,
+        open_confirmation: null,
+        implementation_evidence: null,
+        resolved: true,
+      }).domain,
+    ).toBe("fiduciary_continuity");
+  });
+
+  it("persists configured and exact returned model identities with generated recommendation and response state", () => {
+    const recommendationGeneration = {
+      operation: "blueprint_recommendation" as const,
+      configured_model: "gpt-5.6",
+      returned_model: "gpt-5.6-2026-08-07",
+      response_id: "resp_recommendation",
+    };
+    const responseGeneration = {
+      operation: "blueprint_recommendation_response" as const,
+      configured_model: "gpt-5.6",
+      returned_model: "gpt-5.6-2026-08-07",
+      response_id: "resp_response",
+    };
+    const active = presentRecommendation(
+      {
+        ...createInitialBlueprintState(confirmedOpening(), {
+          planningBaseline: completeBaseline,
+          beneficiaryOutcomes: completeBeneficiary,
+        }),
+        current_gate: 4,
+        phase: "BLUEPRINT_DECISIONS",
+      },
+      "beneficiary",
+      { ...recommendation, generation_metadata: recommendationGeneration },
+    );
+    const applied = applyRecommendationResponse(active, {
+      outcome: "accepted",
+      acknowledgement: "Saved.",
+      clarification_question: null,
+      disposition: "accept",
+      modification: null,
+      open_confirmation: null,
+      stop: null,
+      generation_metadata: responseGeneration,
+    });
+
+    expect(applied.state.generated_responses).toEqual([
+      recommendationGeneration,
+      responseGeneration,
+    ]);
+    expect(applied.decision).toMatchObject({
+      recommendation_generation: recommendationGeneration,
+      response_interpretation_generation: responseGeneration,
+    });
   });
 });

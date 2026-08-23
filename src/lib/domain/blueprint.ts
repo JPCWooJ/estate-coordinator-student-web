@@ -1,6 +1,12 @@
 import { z } from "zod";
 
 import type { MatterOpeningRecord } from "./matter-opening";
+import {
+  appendGeneratedResponse,
+  generatedResponseMetadata,
+  GeneratedResponseMetadataSchema,
+  type WithGeneratedResponse,
+} from "./generated-response";
 import { USER_JOURNEY_PROGRESS } from "./progress";
 
 export const BLUEPRINT_WORKFLOW_VERSION = "EC_ESTATE_BLUEPRINT_0.7";
@@ -94,6 +100,53 @@ export type RecommendationContent = z.infer<
   typeof RecommendationContentSchema
 >;
 
+export const BlueprintStopCategorySchema = z.enum([
+  "identity_or_authority",
+  "conflict_of_interest",
+  "capacity_or_voluntariness",
+  "abuse_or_exploitation",
+  "disputed_instrument",
+  "missing_controlling_source",
+  "source_discrepancy",
+  "rejected_instrument",
+  "stale_or_mismatched_authority",
+  "irreversible_action",
+  "professional_judgment_required",
+  "privacy_or_permission",
+  "execution_control",
+  "unresolved_dependency",
+  "other",
+]);
+export type BlueprintStopCategory = z.infer<
+  typeof BlueprintStopCategorySchema
+>;
+
+export const BlueprintStopSchema = z.object({
+  category: BlueprintStopCategorySchema,
+  reason: z.string().min(1),
+  affected_objects: z.array(z.string().min(1)),
+  resolution_condition: z.string().min(1),
+  assigned_owner: z.string().min(1),
+  escalation_path: z.string().min(1),
+  evidence_required_to_resume: z.array(z.string().min(1)),
+  immediate_action: z.string().min(1),
+});
+export type BlueprintStop = z.infer<typeof BlueprintStopSchema>;
+
+export const RecommendationDomainSchema = z.enum([
+  "beneficiary",
+  "fiduciary_continuity",
+  "special_asset",
+  "readiness",
+]);
+export type RecommendationDomain = z.infer<typeof RecommendationDomainSchema>;
+
+const PersistedRecommendationDomainSchema = z
+  .union([RecommendationDomainSchema, z.literal("fiduciary")])
+  .transform((domain) =>
+    domain === "fiduciary" ? "fiduciary_continuity" : domain,
+  );
+
 export const DecisionDispositionSchema = z.enum([
   "accept",
   "modify",
@@ -106,13 +159,16 @@ export type DecisionDisposition = z.infer<typeof DecisionDispositionSchema>;
 
 export const DecisionRecordSchema = z.object({
   decision_id: z.string().min(1),
-  domain: z.enum(["beneficiary", "fiduciary", "continuity", "readiness"]),
+  domain: PersistedRecommendationDomainSchema,
   recommendation: z.string().min(1),
   principal_response: DecisionDispositionSchema,
   modification: NullableText,
   open_confirmation: NullableText,
   implementation_evidence: NullableText,
   resolved: z.boolean(),
+  recommendation_generation: GeneratedResponseMetadataSchema.nullable().optional(),
+  response_interpretation_generation:
+    GeneratedResponseMetadataSchema.nullable().optional(),
 });
 export type DecisionRecord = z.infer<typeof DecisionRecordSchema>;
 
@@ -138,8 +194,14 @@ const EvidenceInteractionSchema = z.object({
 const RecommendationInteractionSchema = z.object({
   kind: z.literal("recommendation"),
   decision_id: z.string().min(1),
-  domain: z.enum(["beneficiary", "fiduciary_continuity"]),
+  domain: RecommendationDomainSchema,
   content: RecommendationContentSchema,
+  generation_metadata: GeneratedResponseMetadataSchema.nullable().optional(),
+});
+
+const StopInteractionSchema = z.object({
+  kind: z.literal("stop"),
+  stop: BlueprintStopSchema,
 });
 
 const CompleteInteractionSchema = z.object({
@@ -152,6 +214,7 @@ export const BlueprintInteractionSchema = z.discriminatedUnion("kind", [
   QuestionInteractionSchema,
   EvidenceInteractionSchema,
   RecommendationInteractionSchema,
+  StopInteractionSchema,
   CompleteInteractionSchema,
 ]);
 export type BlueprintInteraction = z.infer<typeof BlueprintInteractionSchema>;
@@ -166,6 +229,8 @@ export const BlueprintStateSchema = z.object({
   evidence: EvidenceStateSchema,
   beneficiary_outcomes: BeneficiaryOutcomesSchema,
   fiduciary_continuity_outcomes: FiduciaryContinuityOutcomesSchema,
+  stop: BlueprintStopSchema.nullable().optional(),
+  generated_responses: z.array(GeneratedResponseMetadataSchema).optional(),
   interaction: BlueprintInteractionSchema.nullable(),
   revision: z.number().int().nonnegative(),
 });
@@ -180,22 +245,24 @@ export const BlueprintAnswerPatchSchema = z.object({
 export type BlueprintAnswerPatch = z.infer<typeof BlueprintAnswerPatchSchema>;
 
 export const BlueprintAnswerInterpretationSchema = z.object({
-  outcome: z.enum(["accepted", "clarification"]),
+  outcome: z.enum(["accepted", "clarification", "stop"]),
   acknowledgement: z.string(),
   clarification_question: NullableText,
   patch: BlueprintAnswerPatchSchema,
+  stop: BlueprintStopSchema.nullable(),
 });
 export type BlueprintAnswerInterpretation = z.infer<
   typeof BlueprintAnswerInterpretationSchema
 >;
 
 export const RecommendationResponseSchema = z.object({
-  outcome: z.enum(["accepted", "clarification"]),
+  outcome: z.enum(["accepted", "clarification", "stop"]),
   acknowledgement: z.string(),
   clarification_question: NullableText,
   disposition: DecisionDispositionSchema.nullable(),
   modification: NullableText,
   open_confirmation: NullableText,
+  stop: BlueprintStopSchema.nullable(),
 });
 export type RecommendationResponse = z.infer<
   typeof RecommendationResponseSchema
@@ -207,8 +274,6 @@ export const EvidenceTreatmentSchema = z.object({
   confirmation_dependency: NullableText,
 });
 export type EvidenceTreatment = z.infer<typeof EvidenceTreatmentSchema>;
-
-export type RecommendationDomain = "beneficiary" | "fiduciary_continuity";
 
 export type BlueprintEvaluation = {
   state: BlueprintState;
@@ -453,6 +518,8 @@ export function createInitialBlueprintState(
       beneficiary_readiness: readiness,
       ...seed.fiduciaryContinuityOutcomes,
     },
+    stop: null,
+    generated_responses: [],
     interaction: null,
     revision: 0,
   });
@@ -514,11 +581,96 @@ function question(
   return { kind: "question", key, prompt, helper };
 }
 
+function recommendationDecisionId(domain: RecommendationDomain) {
+  switch (domain) {
+    case "beneficiary":
+      return "BR-004-BENEFICIARY";
+    case "fiduciary_continuity":
+      return "BR-005-FIDUCIARY-CONTINUITY";
+    case "special_asset":
+      return "BR-005-SPECIAL-ASSET";
+    case "readiness":
+      return "BR-005-READINESS";
+  }
+}
+
+function materiallyApplicable(value: string | null) {
+  const normalized = value?.trim().toLowerCase();
+  if (!normalized) return false;
+  return !/^(unknown|not decided|not applicable|n\/a|none(?: identified| applicable| required)?|no(?: material)? (?:special|separate|additional).*)$/.test(
+    normalized,
+  );
+}
+
+function normalizedOutcome(value: string | null) {
+  return value
+    ?.trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim();
+}
+
+function outcomeAlreadyCovered(
+  value: string | null,
+  relatedOutcome: string | null,
+) {
+  const candidate = normalizedOutcome(value);
+  const related = normalizedOutcome(relatedOutcome);
+  if (!candidate || !related) return false;
+  return (
+    candidate === related ||
+    (candidate.length >= 12 && related.includes(candidate)) ||
+    (related.length >= 12 && candidate.includes(related))
+  );
+}
+
+function unresolvedStage5RecommendationDomains(
+  state: BlueprintState,
+  decisions: DecisionRecord[],
+): RecommendationDomain[] {
+  const applicable: RecommendationDomain[] = ["fiduciary_continuity"];
+  if (
+    materiallyApplicable(
+      state.fiduciary_continuity_outcomes.special_assets_or_purposes,
+    ) &&
+    !outcomeAlreadyCovered(
+      state.fiduciary_continuity_outcomes.special_assets_or_purposes,
+      state.fiduciary_continuity_outcomes.essential_responsibilities,
+    )
+  ) {
+    applicable.push("special_asset");
+  }
+  if (
+    materiallyApplicable(
+      state.fiduciary_continuity_outcomes.beneficiary_readiness,
+    ) &&
+    !outcomeAlreadyCovered(
+      state.fiduciary_continuity_outcomes.beneficiary_readiness,
+      state.beneficiary_outcomes.stewardship_objectives,
+    )
+  ) {
+    applicable.push("readiness");
+  }
+  const resolvedIds = new Set(decisions.map((decision) => decision.decision_id));
+  return applicable.filter(
+    (domain) => !resolvedIds.has(recommendationDecisionId(domain)),
+  );
+}
+
 export function evaluateBlueprint(
   inputState: BlueprintState,
   decisions: DecisionRecord[],
 ): BlueprintEvaluation {
   let state = BlueprintStateSchema.parse(inputState);
+  if (state.stop) {
+    return {
+      state: {
+        ...state,
+        interaction: { kind: "stop", stop: state.stop },
+      },
+      recommendationNeeded: null,
+    };
+  }
   for (;;) {
     if (state.current_gate === 2) {
       const baselineTrigger = planningBaselineEvidenceTrigger(
@@ -631,7 +783,8 @@ export function evaluateBlueprint(
 
     if (state.current_gate === 4) {
       const resolved = decisions.some(
-        (decision) => decision.decision_id === "BR-004-BENEFICIARY",
+        (decision) =>
+          decision.decision_id === recommendationDecisionId("beneficiary"),
       );
       if (resolved) {
         state = {
@@ -675,30 +828,6 @@ export function evaluateBlueprint(
       return { state: { ...state, interaction: null }, recommendationNeeded: "beneficiary" };
     }
 
-    const resolved = decisions.some(
-      (decision) => decision.decision_id === "BR-005-FIDUCIARY-CONTINUITY",
-    );
-    if (resolved) {
-      return {
-        state: {
-          ...state,
-          completed_gates: [...new Set([...state.completed_gates, 5])],
-          interaction: {
-            kind: "complete",
-            title: "Your Blueprint decisions are saved",
-            message:
-              "Your beneficiary, fiduciary, and continuity direction is recorded and ready to carry forward.",
-          },
-        },
-        recommendationNeeded: null,
-      };
-    }
-    if (
-      state.interaction?.kind === "recommendation" &&
-      state.interaction.decision_id === "BR-005-FIDUCIARY-CONTINUITY"
-    ) {
-      return { state, recommendationNeeded: null };
-    }
     if (!fiduciaryContinuitySufficient(state.fiduciary_continuity_outcomes)) {
       const missing = missingLabels(state.fiduciary_continuity_outcomes, {
         trusted_people_or_institutions: "the people or institutions you trust",
@@ -722,9 +851,38 @@ export function evaluateBlueprint(
         recommendationNeeded: null,
       };
     }
+
+    if (state.interaction?.kind === "recommendation") {
+      const activeDecisionId = state.interaction.decision_id;
+      const stillPending = unresolvedStage5RecommendationDomains(state, decisions).some(
+        (domain) =>
+          recommendationDecisionId(domain) === activeDecisionId,
+      );
+      if (stillPending) return { state, recommendationNeeded: null };
+    }
+
+    const [nextRecommendation] = unresolvedStage5RecommendationDomains(
+      state,
+      decisions,
+    );
+    if (!nextRecommendation) {
+      return {
+        state: {
+          ...state,
+          completed_gates: [...new Set([...state.completed_gates, 5])],
+          interaction: {
+            kind: "complete",
+            title: "Your Blueprint decisions are saved",
+            message:
+              "Your beneficiary, fiduciary, and continuity direction is recorded and ready to carry forward.",
+          },
+        },
+        recommendationNeeded: null,
+      };
+    }
     return {
       state: { ...state, interaction: null },
-      recommendationNeeded: "fiduciary_continuity",
+      recommendationNeeded: nextRecommendation,
     };
   }
 }
@@ -732,19 +890,21 @@ export function evaluateBlueprint(
 export function presentRecommendation(
   state: BlueprintState,
   domain: RecommendationDomain,
-  content: RecommendationContent,
+  content: WithGeneratedResponse<RecommendationContent>,
 ): BlueprintState {
-  const decisionId =
-    domain === "beneficiary"
-      ? "BR-004-BENEFICIARY"
-      : "BR-005-FIDUCIARY-CONTINUITY";
+  const generationMetadata = generatedResponseMetadata(content);
+  const stateWithGeneration = appendGeneratedResponse(
+    state,
+    generationMetadata,
+  );
   return BlueprintStateSchema.parse({
-    ...state,
+    ...stateWithGeneration,
     interaction: {
       kind: "recommendation",
-      decision_id: decisionId,
+      decision_id: recommendationDecisionId(domain),
       domain,
-      content,
+      content: RecommendationContentSchema.parse(content),
+      generation_metadata: generationMetadata,
     },
   });
 }
@@ -758,10 +918,20 @@ function mergePatch<T extends Record<string, string | null>>(
 
 export function applyBlueprintAnswer(
   state: BlueprintState,
-  interpretation: BlueprintAnswerInterpretation,
+  interpretation: WithGeneratedResponse<BlueprintAnswerInterpretation>,
 ): { state: BlueprintState; assistantMessage: string } {
   if (state.interaction?.kind !== "question") {
     throw new Error("A Blueprint question is not active.");
+  }
+  const stateWithGeneration = appendGeneratedResponse(
+    state,
+    generatedResponseMetadata(interpretation),
+  );
+  if (interpretation.outcome === "stop") {
+    if (!interpretation.stop) {
+      throw new Error("A Blueprint stop outcome requires stop details.");
+    }
+    return applyBlueprintStop(stateWithGeneration, interpretation.stop);
   }
   if (interpretation.outcome === "clarification") {
     if (!interpretation.clarification_question) {
@@ -769,7 +939,7 @@ export function applyBlueprintAnswer(
     }
     return {
       state: {
-        ...state,
+        ...stateWithGeneration,
         interaction: {
           kind: "question",
           key: "clarification",
@@ -781,28 +951,28 @@ export function applyBlueprintAnswer(
     };
   }
 
-  let updated = state;
+  let updated = stateWithGeneration;
   if (state.current_gate === 2) {
     updated = {
-      ...state,
+      ...stateWithGeneration,
       planning_baseline: mergePatch(
-        state.planning_baseline,
+        stateWithGeneration.planning_baseline,
         interpretation.patch.planning_baseline,
       ),
     };
   } else if (state.current_gate === 4) {
     updated = {
-      ...state,
+      ...stateWithGeneration,
       beneficiary_outcomes: mergePatch(
-        state.beneficiary_outcomes,
+        stateWithGeneration.beneficiary_outcomes,
         interpretation.patch.beneficiary_outcomes,
       ),
     };
   } else if (state.current_gate === 5) {
     updated = {
-      ...state,
+      ...stateWithGeneration,
       fiduciary_continuity_outcomes: mergePatch(
-        state.fiduciary_continuity_outcomes,
+        stateWithGeneration.fiduciary_continuity_outcomes,
         interpretation.patch.fiduciary_continuity_outcomes,
       ),
     };
@@ -813,17 +983,37 @@ export function applyBlueprintAnswer(
   };
 }
 
+export function applyBlueprintStop(
+  state: BlueprintState,
+  stop: BlueprintStop,
+): { state: BlueprintState; assistantMessage: string } {
+  const parsedStop = BlueprintStopSchema.parse(stop);
+  return {
+    state: BlueprintStateSchema.parse({
+      ...state,
+      stop: parsedStop,
+      interaction: { kind: "stop", stop: parsedStop },
+      revision: state.revision + 1,
+    }),
+    assistantMessage: parsedStop.immediate_action,
+  };
+}
+
 export function applyEvidenceTreatment(
   state: BlueprintState,
-  treatment: EvidenceTreatment,
+  treatment: WithGeneratedResponse<EvidenceTreatment>,
 ): BlueprintState {
   if (state.current_gate !== 3 || state.interaction?.kind !== "evidence") {
     throw new Error("The focused evidence checkpoint is not active.");
   }
+  const stateWithGeneration = appendGeneratedResponse(
+    state,
+    generatedResponseMetadata(treatment),
+  );
   return {
-    ...state,
+    ...stateWithGeneration,
     evidence: {
-      ...state.evidence,
+      ...stateWithGeneration.evidence,
       status: treatment.confirmation_dependency ? "dependency" : "supported",
       working_scenario: treatment.working_scenario,
       contingency: treatment.contingency,
@@ -836,7 +1026,7 @@ export function applyEvidenceTreatment(
 
 export function buildDecisionRecord(
   state: BlueprintState,
-  response: RecommendationResponse,
+  response: WithGeneratedResponse<RecommendationResponse>,
 ): DecisionRecord {
   if (state.interaction?.kind !== "recommendation") {
     throw new Error("A Blueprint recommendation is not active.");
@@ -846,10 +1036,7 @@ export function buildDecisionRecord(
   }
   return DecisionRecordSchema.parse({
     decision_id: state.interaction.decision_id,
-    domain:
-      state.interaction.domain === "beneficiary"
-        ? "beneficiary"
-        : "fiduciary",
+    domain: state.interaction.domain,
     recommendation: state.interaction.content.starting_point,
     principal_response: response.disposition,
     modification: response.modification,
@@ -858,8 +1045,16 @@ export function buildDecisionRecord(
     implementation_evidence:
       state.interaction.domain === "beneficiary"
         ? "Confirm final beneficiary provisions in executed documents."
-        : "Confirm fiduciary appointments, acceptance, and successor provisions in executed documents.",
+        : state.interaction.domain === "fiduciary_continuity"
+          ? "Confirm fiduciary appointments, acceptance, successor provisions, and continuity responsibilities in executed documents and operating records."
+          : state.interaction.domain === "special_asset"
+            ? "Confirm the approved special-asset treatment in governing documents and applicable operating records."
+            : "Confirm the approved readiness progression in governing documents and family-readiness records.",
     resolved: true,
+    recommendation_generation:
+      state.interaction.generation_metadata ?? null,
+    response_interpretation_generation:
+      generatedResponseMetadata(response),
   });
 }
 
@@ -881,6 +1076,47 @@ export function applyRecommendationClarification(
       },
     },
     assistantMessage: response.clarification_question,
+  };
+}
+
+export function applyRecommendationResponse(
+  state: BlueprintState,
+  response: WithGeneratedResponse<RecommendationResponse>,
+): {
+  state: BlueprintState;
+  assistantMessage: string;
+  decision: DecisionRecord | null;
+} {
+  if (state.interaction?.kind !== "recommendation") {
+    throw new Error("A Blueprint recommendation is not active.");
+  }
+  const stateWithGeneration = appendGeneratedResponse(
+    state,
+    generatedResponseMetadata(response),
+  );
+  if (response.outcome === "stop") {
+    if (!response.stop) {
+      throw new Error("A Blueprint stop outcome requires stop details.");
+    }
+    const stopped = applyBlueprintStop(stateWithGeneration, response.stop);
+    return { ...stopped, decision: null };
+  }
+  if (response.outcome === "clarification") {
+    const clarified = applyRecommendationClarification(
+      stateWithGeneration,
+      response,
+    );
+    return { ...clarified, decision: null };
+  }
+  const decision = buildDecisionRecord(stateWithGeneration, response);
+  return {
+    state: {
+      ...stateWithGeneration,
+      interaction: null,
+      revision: state.revision + 1,
+    },
+    assistantMessage: response.acknowledgement,
+    decision,
   };
 }
 

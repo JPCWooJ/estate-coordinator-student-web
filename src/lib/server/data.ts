@@ -5,10 +5,9 @@ import { randomUUID } from "node:crypto";
 import {
   applyBlueprintAnswer,
   applyEvidenceTreatment,
-  applyRecommendationClarification,
+  applyRecommendationResponse,
   BlueprintState,
   BlueprintStateSchema,
-  buildDecisionRecord,
   createInitialBlueprintState,
   DecisionRecord,
   DecisionRecordSchema,
@@ -19,6 +18,10 @@ import {
   PlanningBaseline,
   presentRecommendation,
 } from "@/lib/domain/blueprint";
+import {
+  appendGeneratedResponse,
+  generatedResponseMetadata,
+} from "@/lib/domain/generated-response";
 import {
   createInitialRecord,
   createInitialWorkflowState,
@@ -129,15 +132,18 @@ function summary(input: {
   openingConfirmedAt: string | null;
   updatedAt: string;
 }): MatterSummary {
+  const status = input.blueprintState?.stop ? "stopped" : input.status;
   const blueprintLabel = input.blueprintState
-    ? phaseLabel(input.blueprintState.phase)
+    ? input.blueprintState.stop
+      ? "Professional follow-up required"
+      : phaseLabel(input.blueprintState.phase)
     : input.status === "blueprint_ready"
       ? "Planning Foundation"
       : null;
   return {
     id: input.id,
     name: input.name,
-    status: input.status,
+    status,
     currentStep: input.state.step,
     stepLabel: blueprintLabel ?? getStepLabel(input.state.step),
     progress: input.blueprintState
@@ -458,6 +464,10 @@ export async function submitMatterTurn(input: {
       expectedState,
       interpretation,
     );
+    const record = appendGeneratedResponse(
+      result.record,
+      generatedResponseMetadata(interpretation),
+    );
     appendSyntheticMessage(matter, "student", expectedState.step, input.answer);
     appendSyntheticMessage(
       matter,
@@ -465,7 +475,7 @@ export async function submitMatterTurn(input: {
       result.state.step,
       result.assistantMessage,
     );
-    matter.record = result.record;
+    matter.record = record;
     matter.state = result.state;
     matter.status = result.state.step === "STOPPED" ? "stopped" : "matter_opening";
     matter.processedTurnKeys.add(input.turnKey);
@@ -487,6 +497,10 @@ export async function submitMatterTurn(input: {
     expectedState,
     interpretation,
   );
+  const record = appendGeneratedResponse(
+    result.record,
+    generatedResponseMetadata(interpretation),
+  );
   const supabase = createAdminSupabaseClient();
   const { error } = await supabase.rpc("apply_matter_opening_turn", {
     p_matter_id: input.matterId,
@@ -495,7 +509,7 @@ export async function submitMatterTurn(input: {
     p_expected_workflow_state: expectedState,
     p_student_message: input.answer,
     p_assistant_message: result.assistantMessage,
-    p_record: result.record,
+    p_record: record,
     p_workflow_state: result.state,
   });
   if (error) throw error;
@@ -523,6 +537,10 @@ export async function correctPlanningSummary(input: {
       matter.state,
       correction,
     );
+    const record = appendGeneratedResponse(
+      result.record,
+      generatedResponseMetadata(correction),
+    );
     appendSyntheticMessage(matter, "student", matter.state.step, input.correction);
     appendSyntheticMessage(
       matter,
@@ -530,7 +548,7 @@ export async function correctPlanningSummary(input: {
       result.state.step,
       result.assistantMessage,
     );
-    matter.record = result.record;
+    matter.record = record;
     matter.state = result.state;
     if (result.changed) matter.revision += 1;
     matter.processedTurnKeys.add(input.turnKey);
@@ -550,6 +568,10 @@ export async function correctPlanningSummary(input: {
     matter.workflowState,
     correction,
   );
+  const record = appendGeneratedResponse(
+    result.record,
+    generatedResponseMetadata(correction),
+  );
   const supabase = createAdminSupabaseClient();
   const { error } = await supabase.rpc("correct_matter_opening_summary", {
     p_matter_id: input.matterId,
@@ -558,7 +580,7 @@ export async function correctPlanningSummary(input: {
     p_expected_workflow_state: matter.workflowState,
     p_student_message: input.correction,
     p_assistant_message: result.assistantMessage,
-    p_record: result.record,
+    p_record: record,
     p_workflow_state: result.state,
     p_record_changed: result.changed,
   });
@@ -696,6 +718,9 @@ export async function submitBlueprintTurn(input: {
   if (!matter?.blueprintState) {
     throw new Error("Planning Foundation is not ready.");
   }
+  if (matter.blueprintState.stop) {
+    throw new Error("Professional follow-up is required before continuing.");
+  }
 
   const expectedState = matter.blueprintState;
   let nextState: BlueprintState;
@@ -707,19 +732,18 @@ export async function submitBlueprintTurn(input: {
       answer: input.answer,
       state: expectedState,
     });
-    if (response.outcome === "clarification") {
-      const clarified = applyRecommendationClarification(expectedState, response);
-      nextState = clarified.state;
-      assistantMessage = clarified.assistantMessage;
-    } else {
-      decision = buildDecisionRecord(expectedState, response);
+    const applied = applyRecommendationResponse(expectedState, response);
+    decision = applied.decision;
+    if (decision) {
       nextState = await prepareBlueprintState(
         matter.record,
-        { ...expectedState, interaction: null, revision: expectedState.revision + 1 },
+        applied.state,
         [...matter.decisions, decision],
       );
-      assistantMessage = response.acknowledgement;
+    } else {
+      nextState = applied.state;
     }
+    assistantMessage = applied.assistantMessage;
   } else if (expectedState.interaction?.kind === "question") {
     const interpretation = await interpretBlueprintAnswer({
       answer: input.answer,
@@ -751,6 +775,7 @@ export async function submitBlueprintTurn(input: {
       );
     }
     synthetic.blueprintState = nextState;
+    if (nextState.stop) synthetic.status = "stopped";
     if (decision) synthetic.decisions.push(decision);
     synthetic.processedTurnKeys.add(input.turnKey);
     synthetic.updatedAt = new Date().toISOString();
