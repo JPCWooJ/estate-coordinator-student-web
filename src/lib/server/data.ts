@@ -36,8 +36,8 @@ import {
   applyPlanningSummaryCorrection,
   confirmOpening,
   getCanonicalQuestion,
-  getProgress,
   getStepLabel,
+  getWorkflowProgress,
 } from "@/lib/domain/workflow";
 import { syntheticModeEnabled } from "./auth";
 import {
@@ -150,7 +150,7 @@ function summary(input: {
       ? phaseProgress(input.blueprintState.phase)
       : input.status === "blueprint_ready"
         ? phaseProgress("PLANNING_FOUNDATION")
-        : getProgress(input.state.step),
+        : getWorkflowProgress(input.state),
     openingConfirmedAt: input.openingConfirmedAt,
     updatedAt: input.updatedAt,
   };

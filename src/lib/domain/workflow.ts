@@ -72,7 +72,7 @@ const STEP_PROGRESS: Record<OpeningStep, number> = {
     USER_JOURNEY_PROGRESS.estatePlanningPriorities.houseInOrder,
   MO08_CONFIRM: USER_JOURNEY_PROGRESS.planningSummary,
   BLUEPRINT_READY: USER_JOURNEY_PROGRESS.planningFoundation,
-  STOPPED: 100,
+  STOPPED: USER_JOURNEY_PROGRESS.estatePlanningPriorities.outcomes,
 };
 
 function nextPriority(record: MatterOpeningRecord) {
@@ -96,6 +96,12 @@ export function getStepLabel(step: OpeningStep) {
 
 export function getProgress(step: OpeningStep) {
   return STEP_PROGRESS[step];
+}
+
+export function getWorkflowProgress(state: WorkflowState) {
+  return state.step === "STOPPED"
+    ? (state.progressBeforeStop ?? STEP_PROGRESS.STOPPED)
+    : STEP_PROGRESS[state.step];
 }
 
 export function getCanonicalQuestion(
@@ -354,6 +360,7 @@ export function applyAcceptedInterpretation(
       },
       state: {
         step: "STOPPED" as const,
+        progressBeforeStop: getProgress(state.step),
         clarification: null,
         stop: interpretation.stop,
       },

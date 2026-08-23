@@ -19,6 +19,7 @@ import {
   confirmOpening,
   getCanonicalQuestion,
   getProgress,
+  getWorkflowProgress,
 } from "./workflow";
 
 function accepted(
@@ -121,6 +122,38 @@ describe("Matter Opening v0.4 workflow", () => {
     expect(progress.every((value, index) => index === 0 || value >= progress[index - 1]!)).toBe(
       true,
     );
+  });
+
+  it("preserves meaningful non-complete progress when Matter Opening stops", () => {
+    const record = createInitialRecord("aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa");
+    const state: WorkflowState = {
+      step: "MO05_COMPLEXITY",
+      clarification: null,
+      stop: null,
+    };
+    const result = advance(record, state, {
+      outcome: "stop",
+      acknowledgement: "",
+      clarification_question: null,
+      patch: emptyInterpretationPatch(),
+      stop: {
+        category: "expedited_event",
+        reason: "A death occurred yesterday.",
+        immediate_action: "Contact the estate attorney before continuing planning.",
+      },
+    });
+
+    expect(result.state.step).toBe("STOPPED");
+    expect(result.state.progressBeforeStop).toBe(getProgress("MO05_COMPLEXITY"));
+    expect(getWorkflowProgress(result.state)).toBe(getProgress("MO05_COMPLEXITY"));
+    expect(getWorkflowProgress(result.state)).toBeLessThan(100);
+    expect(
+      getWorkflowProgress({
+        step: "STOPPED",
+        clarification: null,
+        stop: result.state.stop,
+      }),
+    ).toBe(getProgress("MO01_OUTCOMES"));
   });
 
   it("uses the approved outcome taxonomy", () => {
@@ -480,6 +513,7 @@ describe("Matter Opening v0.4 workflow", () => {
     const serialized = JSON.stringify(summary);
 
     expect(summary.currentPlanSnapshot).toContain("2018");
+    expect(summary.peopleFlags).toEqual([]);
     expect(summary.knownChanges).toContain("Moved primary residence to Florida.");
     expect(summary.complexityFlags).toContain("Georgia rental");
     expect(summary.contacts[0]?.name).toBe("Jordan Lee");

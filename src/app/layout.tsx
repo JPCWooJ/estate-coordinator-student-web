@@ -5,7 +5,8 @@ import "./globals.css";
 
 export const metadata: Metadata = {
   title: "Estate Coordinator",
-  description: "Controlled student planning-summary and blueprint transition experience",
+  description:
+    "Estate Coordinator guides principals through estate-planning priorities, recommendations, and Estate Blueprint decisions.",
 };
 
 export default function RootLayout({ children }: { children: ReactNode }) {

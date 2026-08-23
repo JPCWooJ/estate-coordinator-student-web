@@ -134,6 +134,7 @@ export type MatterOpeningRecord = z.infer<typeof MatterOpeningRecordSchema>;
 
 export const WorkflowStateSchema = z.object({
   step: OpeningStepSchema,
+  progressBeforeStop: z.number().int().min(0).max(99).optional(),
   clarification: z
     .object({ question: z.string().min(1) })
     .nullable()

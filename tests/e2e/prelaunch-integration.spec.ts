@@ -58,6 +58,79 @@ async function answer(page: Page, value: string) {
   return response.json();
 }
 
+test("authenticated start renders a principal-facing disclosure without internal terminology", async ({
+  page,
+}) => {
+  await resetSyntheticState(page);
+  await page.getByRole("button", { name: "Use synthetic student A" }).click();
+  await expect(page).toHaveURL(/\/home$/);
+
+  const disclosure = page.locator(".notice-card");
+  await expect(disclosure).toBeVisible();
+  await expect(
+    disclosure.getByRole("heading", { name: "Private estate-planning workspace" }),
+  ).toBeVisible();
+  await expect(disclosure).toContainText(
+    "Estate Coordinator supports planning and organization.",
+  );
+  await expect(disclosure).toContainText(
+    "Do not enter passwords, private keys, seed phrases",
+  );
+  await expect(disclosure).toContainText(
+    "Existing estate-planning documents are not reviewed in this phase.",
+  );
+  await expect(disclosure).not.toContainText(
+    /student|beta|cohort|invitation|internal(?:-| )test/i,
+  );
+  await expect(page.locator('meta[name="description"]')).toHaveAttribute(
+    "content",
+    "Estate Coordinator guides principals through estate-planning priorities, recommendations, and Estate Blueprint decisions.",
+  );
+  await expect(page.getByRole("checkbox")).not.toBeChecked();
+  await expect(
+    page.getByRole("button", { name: "Acknowledge and continue" }),
+  ).toBeDisabled();
+});
+
+test("mandatory Matter Opening stop retains non-complete progress across reload", async ({
+  page,
+}) => {
+  await resetSyntheticState(page);
+  await page.getByRole("button", { name: "Use synthetic student A" }).click();
+  await page.getByRole("checkbox").check();
+  await page
+    .getByRole("button", { name: "Acknowledge and continue" })
+    .click();
+  await page.getByRole("button", { name: "Start planning priorities" }).click();
+  await page.getByRole("button", { name: "Begin", exact: true }).click();
+
+  const stopped = await answer(page, "A death occurred yesterday.");
+  expect(stopped.matter.progress).toBe(5);
+  expect(stopped.matter.progress).toBeLessThan(100);
+  await expect(
+    page.getByRole("heading", {
+      name: "A qualified professional should review this next",
+    }),
+  ).toBeVisible();
+  await expect(page.getByRole("progressbar")).toHaveAttribute(
+    "aria-valuenow",
+    "5",
+  );
+  await expect(page.locator(".progress-copy strong")).toHaveText("5%");
+
+  await page.reload();
+  await expect(
+    page.getByRole("heading", {
+      name: "A qualified professional should review this next",
+    }),
+  ).toBeVisible();
+  await expect(page.getByRole("progressbar")).toHaveAttribute(
+    "aria-valuenow",
+    "5",
+  );
+  await expect(page.locator(".progress-copy strong")).toHaveText("5%");
+});
+
 test("intended entry runs uninterrupted through Matter Opening and the Stage 5 endpoint", async ({
   page,
 }) => {
@@ -109,6 +182,7 @@ test("intended entry runs uninterrupted through Matter Opening and the Stage 5 e
   await expect(
     page.getByRole("heading", { name: "Your Planning Summary" }),
   ).toBeVisible();
+  await expect(page.locator("body")).not.toContainText("Flags: Not yet known");
   await page
     .getByRole("button", { name: "Confirm planning summary" })
     .click();
@@ -230,6 +304,57 @@ test("Blueprint clarification appears once as the active question", async ({
   await expect(page.getByText(clarification, { exact: true })).toHaveCount(1);
   await expect(page.locator(".active-question")).toContainText(clarification);
   await expect(page.getByLabel("Your response")).toBeEnabled();
+
+  await page.reload();
+  await expect(page.getByText(clarification, { exact: true })).toHaveCount(1);
+  await expect(page.locator(".active-question")).toContainText(clarification);
+  await answer(
+    page,
+    "Preserve continuing protection while allowing useful access.",
+  );
+  await expect(
+    page.getByRole("heading", {
+      name: "Protect beneficiaries while preserving useful access",
+    }),
+  ).toBeVisible();
+
+  const disposition = await answer(page, "I accept this recommendation.");
+  expect(
+    disposition.matter.decisions.map(
+      (decision: { decision_id: string }) => decision.decision_id,
+    ),
+  ).toEqual(["BR-004-BENEFICIARY"]);
+
+  await page.reload();
+  await expect(
+    page.getByText(/In one answer, tell us what matters about/),
+  ).toBeVisible();
+  await expect(page.getByRole("progressbar")).toHaveAttribute(
+    "aria-valuenow",
+    "75",
+  );
+  await answer(
+    page,
+    "My spouse and Jordan Lee can serve, with an independent trust company as backup. Household, investment, and business responsibilities must continue. The family business and digital assets need separate instructions, and beneficiaries should gain authority after financial education and demonstrated judgment.",
+  );
+  await answer(page, "I accept this starting structure.");
+  await answer(page, "I accept this separate treatment.");
+  const completed = await answer(page, "I accept this readiness progression.");
+
+  await expect(
+    page.getByRole("heading", { name: "Your Blueprint decisions are saved" }),
+  ).toBeVisible();
+  expect(completed.matter.blueprintState.completed_gates).toContain(5);
+  expect(
+    completed.matter.decisions.map(
+      (decision: { decision_id: string }) => decision.decision_id,
+    ),
+  ).toEqual([
+    "BR-004-BENEFICIARY",
+    "BR-005-FIDUCIARY-CONTINUITY",
+    "BR-005-SPECIAL-ASSET",
+    "BR-005-READINESS",
+  ]);
 });
 
 test("an expired session returns a matter route cleanly to sign-in", async ({

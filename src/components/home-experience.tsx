@@ -107,22 +107,26 @@ export function HomeExperience() {
                 priorities, people, timeline, and planning context before Blueprint
                 recommendations begin.
               </p>
-                <p>This is not legal, tax, or investment advice.</p>
-                <ul>
-                  <li>
-                    Use representative planning context and avoid sensitive personal
-                    facts unless the controlled-beta policy explicitly approves them.
-                  </li>
+              <p>
+                Estate Coordinator supports planning and organization. It does not
+                provide legal, tax, investment, or valuation advice. Confirm final
+                decisions with qualified professional advisors.
+              </p>
+              <ul>
+                <li>
+                  Share only the planning context needed here, and avoid unnecessary
+                  sensitive personal or financial information.
+                </li>
                 <li>
                   Do not enter passwords, private keys, seed phrases, or full
-                  account identifiers.
+                  financial-account or government identifiers.
                 </li>
                 <li>
                   Existing estate-planning documents are not reviewed in this phase.
                 </li>
                 <li>
-                  Your saved planning information is retained under the cohort
-                  privacy controls.
+                  Your answers are saved in your private workspace so you can resume.
+                  Sign out when finished on a shared device.
                 </li>
               </ul>
             </div>
