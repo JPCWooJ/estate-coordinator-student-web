@@ -9,7 +9,10 @@ import { AppHeader } from "./app-header";
 import { OpeningSummary } from "./opening-summary";
 
 type SessionPayload = { user: { id: string; email: string } | null };
-type SessionPayloadWithMatter = { session: SessionPayload; matter: MatterView };
+type SessionPayloadWithMatter = {
+  session: SessionPayload;
+  matter: MatterView | null;
+};
 
 async function fetchMatterPayload(matterId: string): Promise<SessionPayloadWithMatter> {
   const [sessionResponse, matterResponse] = await Promise.all([
@@ -17,6 +20,9 @@ async function fetchMatterPayload(matterId: string): Promise<SessionPayloadWithM
     fetch(`/api/matters/${matterId}`),
   ]);
   const session: SessionPayload = await sessionResponse.json();
+  if (!session.user || matterResponse.status === 401) {
+    return { session: { user: null }, matter: null };
+  }
   const data = await matterResponse.json();
   if (!matterResponse.ok) {
     throw new Error(data.error ?? "The planning workspace could not be loaded.");
@@ -67,6 +73,9 @@ export function MatterExperience({ matterId }: { matterId: string }) {
           router.replace("/");
           return;
         }
+        if (!payload.matter) {
+          throw new Error("The planning workspace could not be loaded.");
+        }
         let loaded = payload.matter;
         if (loaded.status === "blueprint_ready" && !loaded.blueprintState) {
           loaded = await continueIntoBlueprint(matterId);
@@ -108,34 +117,43 @@ export function MatterExperience({ matterId }: { matterId: string }) {
     setError("");
     setSaveStatus("Saving…");
     pendingTurnKey.current ??= crypto.randomUUID();
-    const endpoint = matter.blueprintState
-      ? `/api/matters/${matterId}/blueprint/turns`
-      : `/api/matters/${matterId}/${correcting ? "corrections" : "turns"}`;
-    const response = await fetch(endpoint, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(
-        correcting
-          ? { turnKey: pendingTurnKey.current, correction: answer }
-          : { turnKey: pendingTurnKey.current, answer },
-      ),
-    });
-    const data = await response.json();
-    setBusy(false);
-    if (!response.ok) {
+    try {
+      const endpoint = matter.blueprintState
+        ? `/api/matters/${matterId}/blueprint/turns`
+        : `/api/matters/${matterId}/${correcting ? "corrections" : "turns"}`;
+      const response = await fetch(endpoint, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(
+          correcting
+            ? { turnKey: pendingTurnKey.current, correction: answer }
+            : { turnKey: pendingTurnKey.current, answer },
+        ),
+      });
+      let data: { error?: string; matter?: MatterView };
+      try {
+        data = await response.json();
+      } catch {
+        throw new Error("Your response could not be saved. Please retry.");
+      }
+      if (!response.ok || !data.matter) {
+        throw new Error(data.error ?? "Your response could not be saved. Please retry.");
+      }
+      pendingTurnKey.current = null;
+      setMatter(data.matter);
+      setInterviewStarted(true);
+      setAnswer("");
+      setCorrecting(
+        data.matter.workflowState.step === "MO08_CONFIRM" &&
+          Boolean(data.matter.workflowState.clarification),
+      );
+      setSaveStatus(`Saved ${new Date(data.matter.savedAt).toLocaleTimeString()}`);
+    } catch {
       setSaveStatus("Not saved - retry");
-      setError(data.error ?? "Your response could not be saved. Please retry.");
-      return;
+      setError("Your response could not be saved. Please retry.");
+    } finally {
+      setBusy(false);
     }
-    pendingTurnKey.current = null;
-    setMatter(data.matter);
-    setInterviewStarted(true);
-    setAnswer("");
-    setCorrecting(
-      data.matter.workflowState.step === "MO08_CONFIRM" &&
-        Boolean(data.matter.workflowState.clarification),
-    );
-    setSaveStatus(`Saved ${new Date(data.matter.savedAt).toLocaleTimeString()}`);
   }
 
   async function confirm() {
@@ -174,21 +192,32 @@ export function MatterExperience({ matterId }: { matterId: string }) {
     const form = new FormData();
     form.set("turnKey", pendingTurnKey.current);
     if (file) form.set("file", file);
-    const response = await fetch(`/api/matters/${matterId}/blueprint/evidence`, {
-      method: "POST",
-      body: form,
-    });
-    const data = await response.json();
-    setBusy(false);
-    if (!response.ok) {
+    try {
+      const response = await fetch(`/api/matters/${matterId}/blueprint/evidence`, {
+        method: "POST",
+        body: form,
+      });
+      let data: { error?: string; matter?: MatterView };
+      try {
+        data = await response.json();
+      } catch {
+        throw new Error("The evidence could not be processed. Please retry.");
+      }
+      if (!response.ok || !data.matter) {
+        throw new Error(
+          data.error ?? "The evidence could not be processed. Please retry.",
+        );
+      }
+      pendingTurnKey.current = null;
+      setEvidenceFile(null);
+      setMatter(data.matter);
+      setSaveStatus(`Saved ${new Date(data.matter.savedAt).toLocaleTimeString()}`);
+    } catch {
       setSaveStatus("Not saved - retry");
-      setError(data.error ?? "The evidence could not be processed. Please retry.");
-      return;
+      setError("The evidence could not be processed. Please retry.");
+    } finally {
+      setBusy(false);
     }
-    pendingTurnKey.current = null;
-    setEvidenceFile(null);
-    setMatter(data.matter);
-    setSaveStatus(`Saved ${new Date(data.matter.savedAt).toLocaleTimeString()}`);
   }
 
   if (!matter || !email) {
@@ -214,8 +243,16 @@ export function MatterExperience({ matterId }: { matterId: string }) {
     !isStopped &&
     matter.workflowState.step === "MO01_OUTCOMES" &&
     !interviewStarted;
+  const activeClarification =
+    matter.workflowState.clarification?.question ??
+    (blueprintInteraction?.kind === "question" &&
+    blueprintInteraction.key === "clarification"
+      ? blueprintInteraction.prompt
+      : null);
   const hideLastAssistant = Boolean(
-    matter.workflowState.clarification && lastAssistantMessage?.role === "assistant",
+    activeClarification &&
+      lastAssistantMessage?.role === "assistant" &&
+      lastAssistantMessage.content === activeClarification,
   );
   const visibleMessages = hideLastAssistant
     ? matter.messages.slice(0, -1)

@@ -22,6 +22,12 @@ async function fetchHomePayload(): Promise<{
     return { session, matters: [] };
   }
   const mattersResponse = await fetch("/api/matters");
+  if (mattersResponse.status === 401) {
+    return {
+      session: { user: null, betaAcknowledged: false },
+      matters: [],
+    };
+  }
   const data = await mattersResponse.json();
   if (!mattersResponse.ok) throw new Error("Matter home request failed.");
   return { session, matters: data.matters };
