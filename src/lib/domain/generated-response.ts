@@ -7,6 +7,7 @@ export const GeneratedResponseOperationSchema = z.enum([
   "blueprint_recommendation",
   "blueprint_recommendation_response",
   "blueprint_evidence_treatment",
+  "final_review_correction",
 ]);
 export type GeneratedResponseOperation = z.infer<
   typeof GeneratedResponseOperationSchema

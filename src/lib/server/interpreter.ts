@@ -10,6 +10,9 @@ import {
   DecisionRecord,
   EvidenceTreatment,
   EvidenceTreatmentSchema,
+  FinalReviewCorrection,
+  FinalReviewCorrectionSchema,
+  FinalReviewProfile,
   RecommendationContent,
   RecommendationContentSchema,
   RecommendationDomain,
@@ -33,6 +36,7 @@ import {
   generateSyntheticRecommendation,
   interpretSyntheticBlueprintAnswer,
   interpretSyntheticEvidence,
+  interpretSyntheticFinalReviewCorrection,
   interpretSyntheticAnswer,
   interpretSyntheticCorrection,
   interpretSyntheticRecommendationResponse,
@@ -218,6 +222,9 @@ export async function generateBlueprintRecommendation(input: {
           confirmed_priorities: input.openingRecord.top_three_priorities,
           definition_of_success:
             input.openingRecord.principal_definition_of_success,
+          source_context: input.state.source_context,
+          planning_baseline: input.state.planning_baseline,
+          planning_synthesis: input.state.planning_synthesis,
           beneficiary_outcomes: input.state.beneficiary_outcomes,
           fiduciary_continuity_outcomes:
             input.state.fiduciary_continuity_outcomes,
@@ -249,6 +256,47 @@ export async function generateBlueprintRecommendation(input: {
     response.output_parsed,
     response,
     "blueprint_recommendation",
+  );
+}
+
+export async function interpretFinalReviewCorrection(input: {
+  correction: string;
+  profile: FinalReviewProfile;
+}): Promise<WithGeneratedResponse<FinalReviewCorrection>> {
+  if (syntheticModeEnabled()) {
+    return interpretSyntheticFinalReviewCorrection(input);
+  }
+  const response = await client().responses.parse({
+    model: MODEL,
+    store: false,
+    input: [
+      {
+        role: "system",
+        content:
+          "Apply one principal-requested correction to the Estate Blueprint Final Review profile. Select exactly one approved section and return its complete replacement text. Preserve every other section. For material open confirmations, return the full corrected list as newline-separated text. Do not authorize progression, generate documents, provide professional advice, or infer unsupported facts.",
+      },
+      {
+        role: "user",
+        content: JSON.stringify({
+          requested_correction: input.correction,
+          current_profile: input.profile,
+        }),
+      },
+    ],
+    text: {
+      format: zodTextFormat(
+        FinalReviewCorrectionSchema,
+        "final_review_correction",
+      ),
+    },
+  });
+  if (!response.output_parsed) {
+    throw new Error("The Estate Coordinator could not interpret that correction.");
+  }
+  return withGeneratedResponse(
+    response.output_parsed,
+    response,
+    "final_review_correction",
   );
 }
 

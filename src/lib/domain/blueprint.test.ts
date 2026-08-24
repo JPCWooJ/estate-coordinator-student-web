@@ -746,8 +746,9 @@ describe("Estate Blueprint internal gates 1-5", () => {
       [beneficiaryDecision, combinedDecision],
     );
 
-    expect(complete.recommendationNeeded).toBeNull();
-    expect(complete.state.interaction?.kind).toBe("complete");
+    expect(complete.state.current_gate).toBe(6);
+    expect(complete.state.completed_gates).toEqual([1, 2, 3, 4, 5]);
+    expect(complete.recommendationNeeded).toBe("tax_transfer_strategy");
   });
 
   it("records separate Stage 5 decisions for materially distinct special-asset and readiness outcomes without repetition", () => {
@@ -782,15 +783,18 @@ describe("Estate Blueprint internal gates 1-5", () => {
     }
 
     const complete = evaluateBlueprint(state, decisions);
-    expect(complete.recommendationNeeded).toBeNull();
-    expect(complete.state.interaction?.kind).toBe("complete");
+    expect(complete.state.current_gate).toBe(6);
+    expect(complete.state.completed_gates).toEqual([1, 2, 3, 4, 5]);
+    expect(complete.recommendationNeeded).toBe("tax_transfer_strategy");
     expect(decisions.map((decision) => decision.decision_id)).toEqual([
       "BR-004-BENEFICIARY",
       "BR-005-FIDUCIARY-CONTINUITY",
       "BR-005-SPECIAL-ASSET",
       "BR-005-READINESS",
     ]);
-    expect(evaluateBlueprint(complete.state, decisions).recommendationNeeded).toBeNull();
+    expect(evaluateBlueprint(complete.state, decisions).recommendationNeeded).toBe(
+      "tax_transfer_strategy",
+    );
   });
 
   it("resumes a persisted Stage 5 fiduciary decision under the combined domain", () => {
