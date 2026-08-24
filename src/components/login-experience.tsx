@@ -71,15 +71,17 @@ export function LoginExperience({ syntheticMode }: { syntheticMode: boolean }) {
         <Brand />
         <div className="auth-content">
           <h1 id="welcome-title">
-            Build an estate plan that protects the people you love.
+            Tell us what matters most to you and your family.
           </h1>
           <p className="lede">
-            Clarify what matters most, make the key planning decisions, and leave
-            with a clear Estate Blueprint designed around your family, priorities,
-            and future.
+            We will help you achieve your goals. Your Estate Blueprint is designed
+            around your family, priorities, and future.
           </p>
 
           <form onSubmit={requestLink} className="auth-form">
+            <p className="status-text auth-status-prominent" role="status" aria-live="polite">
+              {status}
+            </p>
             <label htmlFor="email">Email address</label>
             <input
               id="email"
@@ -112,9 +114,6 @@ export function LoginExperience({ syntheticMode }: { syntheticMode: boolean }) {
             </div>
           )}
 
-          <p className="status-text" role="status" aria-live="polite">
-            {status}
-          </p>
           <p className="auth-footnote">
             Estate Coordinator provides planning guidance, not legal or tax advice.
           </p>

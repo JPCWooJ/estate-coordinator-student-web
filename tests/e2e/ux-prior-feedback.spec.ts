@@ -62,12 +62,12 @@ test("landing presents the approved outcome, three steps, and professional bound
   await expect(
     page.getByRole("heading", {
       level: 1,
-      name: "Build an estate plan that protects the people you love.",
+      name: "Tell us what matters most to you and your family.",
     }),
   ).toBeVisible();
   await expect(
     page.getByText(
-      "Clarify what matters most, make the key planning decisions, and leave with a clear Estate Blueprint designed around your family, priorities, and future.",
+      "We will help you achieve your goals. Your Estate Blueprint is designed around your family, priorities, and future.",
       { exact: true },
     ),
   ).toBeVisible();
@@ -131,41 +131,19 @@ test("landing presents the approved outcome, three steps, and professional bound
   await expectViewportFit(page);
 });
 
-test("new priorities workspace orients the user and gives Begin visual priority", async ({
+test("new priorities workspace opens directly into grouped intake with persistent progress", async ({
   page,
 }, testInfo) => {
   await openNewPrioritiesStart(page, testInfo.project.name);
 
-  const start = page.locator(".start-card");
+  const start = page.locator(".structured-intake");
   await expect(
-    start.getByRole("heading", { level: 2, name: "Estate Planning Priorities" }),
+    start.getByRole("heading", { level: 2, name: "Goals, family, and beneficiary intent" }),
   ).toBeVisible();
-  await expect(start).toContainText("In approximately 10 minutes");
-  await expect(start).toContainText("There are no right or wrong answers.");
-  await expect(start).toContainText("Answer in ordinary language");
-  await expect(start).toContainText(
-    "Your answers become the foundation for your Estate Blueprint",
-  );
+  await expect(start).toContainText("Rank the outcomes that matter most");
+  await expect(page.getByText("1 of 7", { exact: true })).toBeVisible();
   await expect(page.getByRole("complementary")).toHaveCount(0);
-
-  const begin = page.getByRole("button", { name: "Begin", exact: true });
-  await expect(begin).toBeVisible();
-  const [startBox, beginBox] = await Promise.all([
-    start.boundingBox(),
-    begin.boundingBox(),
-  ]);
-  expect(startBox).not.toBeNull();
-  expect(beginBox).not.toBeNull();
-  expect(beginBox!.height).toBeGreaterThanOrEqual(54);
-  expect(
-    Math.abs(
-      beginBox!.x + beginBox!.width / 2 - (startBox!.x + startBox!.width / 2),
-    ),
-  ).toBeLessThanOrEqual(1);
+  await expect(page.locator(".workspace-aside, .conversation-history")).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Save and continue" })).toBeVisible();
   await expectViewportFit(page);
-
-  await begin.focus();
-  await page.keyboard.press("Enter");
-  await expect(page.locator(".active-question")).toBeVisible();
-  await expect(page.locator(".active-question")).toBeFocused();
 });

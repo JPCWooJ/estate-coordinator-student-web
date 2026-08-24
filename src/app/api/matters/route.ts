@@ -21,7 +21,7 @@ export async function POST(request: Request) {
     if (!user) throw new Error("Unauthorized.");
     if (!(await betaAcknowledged(user.id))) {
       return NextResponse.json(
-        { error: "Acknowledge the beta notice before starting." },
+        { error: "Acknowledge the privacy and professional-boundary notice before starting." },
         { status: 403 },
       );
     }

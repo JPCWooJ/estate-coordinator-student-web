@@ -350,6 +350,16 @@ const RecommendationInteractionSchema = z.object({
   generation_metadata: GeneratedResponseMetadataSchema.nullable().optional(),
 });
 
+const RecommendationItemSchema = RecommendationInteractionSchema.omit({
+  kind: true,
+});
+export type RecommendationItem = z.infer<typeof RecommendationItemSchema>;
+
+const RecommendationsInteractionSchema = z.object({
+  kind: z.literal("recommendations"),
+  items: z.array(RecommendationItemSchema).min(1),
+});
+
 const StopInteractionSchema = z.object({
   kind: z.literal("stop"),
   stop: BlueprintStopSchema,
@@ -380,6 +390,7 @@ export const BlueprintInteractionSchema = z.discriminatedUnion("kind", [
   QuestionInteractionSchema,
   EvidenceInteractionSchema,
   RecommendationInteractionSchema,
+  RecommendationsInteractionSchema,
   StopInteractionSchema,
   CompleteInteractionSchema,
   FinalReviewInteractionSchema,
@@ -445,6 +456,16 @@ export const RecommendationResponseSchema = z.object({
 });
 export type RecommendationResponse = z.infer<
   typeof RecommendationResponseSchema
+>;
+
+export const RecommendationDecisionSubmissionSchema = z.object({
+  decisionId: z.string().min(1),
+  disposition: DecisionDispositionSchema,
+  modification: NullableText.optional(),
+  openConfirmation: NullableText.optional(),
+});
+export type RecommendationDecisionSubmission = z.infer<
+  typeof RecommendationDecisionSubmissionSchema
 >;
 
 export const EvidenceTreatmentSchema = z.object({
@@ -756,26 +777,30 @@ export function createInitialBlueprintState(
     beneficiary_outcomes: {
       intended_beneficiaries:
         primaryBeneficiaries ||
+        (canonical?.goalsFamily ? "not decided" : null) ||
         (known(record.people_and_interests_snapshot)
           ? record.people_and_interests_snapshot
           : null),
-      substitute_beneficiaries: substituteBeneficiaries || null,
+      substitute_beneficiaries:
+        substituteBeneficiaries || (canonical?.goalsFamily ? "not decided" : null),
       relative_treatment: relativeTreatment || null,
-      protection_needs: canonicalProtection || protection,
+      protection_needs: canonicalProtection || protection || "not applicable",
       stewardship_objectives:
         canonicalReadiness ||
+        (canonical?.goalsFamily ? "not decided" : null) ||
         priorityDetail(record, ["distribution_control", "heir_readiness"]),
       special_treatment:
-        canonical?.goalsFamily?.materialCircumstances || specialAssets,
+        canonical?.goalsFamily?.materialCircumstances || specialAssets || "not applicable",
       ...seed.beneficiaryOutcomes,
     },
     fiduciary_continuity_outcomes: {
-      trusted_people_or_institutions: trustedPeople || null,
-      backups: backups || null,
+      trusted_people_or_institutions:
+        trustedPeople || (team ? "not decided" : null),
+      backups: backups || (team ? "not decided" : null),
       essential_responsibilities:
         team?.continuityResponsibilities.join("; ") || responsibilities,
       special_assets_or_purposes:
-        team?.specialAssetsOrPurposes.join("; ") || specialAssets,
+        team?.specialAssetsOrPurposes.join("; ") || specialAssets || (team ? "not applicable" : null),
       beneficiary_readiness: team?.readinessPlan || readiness,
       ...seed.fiduciaryContinuityOutcomes,
     },
@@ -980,6 +1005,25 @@ function unresolvedStage6RecommendationDomains(
   return applicable.filter(
     (domain) => !resolvedIds.has(recommendationDecisionId(domain)),
   );
+}
+
+export function applicableRecommendationDomains(
+  state: BlueprintState,
+  decisions: DecisionRecord[],
+): RecommendationDomain[] {
+  const resolvedIds = new Set(decisions.map((decision) => decision.decision_id));
+  const stage5 = unresolvedStage5RecommendationDomains(state, decisions);
+  const stage6 = unresolvedStage6RecommendationDomains(state, decisions).filter(
+    (domain) =>
+      domain !== "asset_transfer_strategy" || !stage5.includes("special_asset"),
+  );
+  return [
+    ...(resolvedIds.has(recommendationDecisionId("beneficiary"))
+      ? []
+      : (["beneficiary"] as RecommendationDomain[])),
+    ...stage5,
+    ...stage6,
+  ];
 }
 
 function decisionDirection(
@@ -1381,6 +1425,36 @@ export function presentRecommendation(
   });
 }
 
+export function presentRecommendations(
+  state: BlueprintState,
+  recommendations: Array<{
+    domain: RecommendationDomain;
+    content: WithGeneratedResponse<RecommendationContent>;
+  }>,
+): BlueprintState {
+  let stateWithGeneration = state;
+  const items = recommendations.map(({ domain, content }) => {
+    const generationMetadata = generatedResponseMetadata(content);
+    stateWithGeneration = appendGeneratedResponse(
+      stateWithGeneration,
+      generationMetadata,
+    );
+    return RecommendationItemSchema.parse({
+      decision_id: recommendationDecisionId(domain),
+      domain,
+      content: RecommendationContentSchema.parse(content),
+      generation_metadata: generationMetadata,
+    });
+  });
+  return BlueprintStateSchema.parse({
+    ...stateWithGeneration,
+    phase: "BLUEPRINT_DECISIONS",
+    current_gate: 6,
+    completed_gates: [...new Set([...state.completed_gates, 2, 3, 4, 5])],
+    interaction: { kind: "recommendations", items },
+  });
+}
+
 function mergePatch<T extends Record<string, string | null>>(
   current: T,
   patch: Partial<T> | null,
@@ -1500,18 +1574,15 @@ export function applyEvidenceTreatment(
   };
 }
 
-export function buildDecisionRecord(
-  state: BlueprintState,
+function buildDecisionRecordFromItem(
+  item: RecommendationItem,
   response: WithGeneratedResponse<RecommendationResponse>,
 ): DecisionRecord {
-  if (state.interaction?.kind !== "recommendation") {
-    throw new Error("A Blueprint recommendation is not active.");
-  }
   if (response.outcome !== "accepted" || !response.disposition) {
     throw new Error("A recommendation response requires a disposition.");
   }
   const implementationEvidence = (() => {
-    switch (state.interaction.domain) {
+    switch (item.domain) {
       case "beneficiary":
         return "Confirm final beneficiary provisions in executed documents.";
       case "fiduciary_continuity":
@@ -1529,24 +1600,80 @@ export function buildDecisionRecord(
     }
   })();
   return DecisionRecordSchema.parse({
-    decision_id: state.interaction.decision_id,
-    domain: state.interaction.domain,
-    objective: state.interaction.content.objective,
-    recommendation: state.interaction.content.starting_point,
-    rationale: state.interaction.content.rationale,
+    decision_id: item.decision_id,
+    domain: item.domain,
+    objective: item.content.objective,
+    recommendation: item.content.starting_point,
+    rationale: item.content.rationale,
     alternative_or_tradeoff:
-      state.interaction.content.alternative_or_tradeoff,
+      item.content.alternative_or_tradeoff,
     principal_response: response.disposition,
     modification: response.modification,
     open_confirmation:
-      response.open_confirmation ?? state.interaction.content.open_confirmation,
+      response.open_confirmation ?? item.content.open_confirmation,
     implementation_evidence: implementationEvidence,
     resolved: true,
     recommendation_generation:
-      state.interaction.generation_metadata ?? null,
+      item.generation_metadata ?? null,
     response_interpretation_generation:
       generatedResponseMetadata(response),
   });
+}
+
+export function buildDecisionRecord(
+  state: BlueprintState,
+  response: WithGeneratedResponse<RecommendationResponse>,
+): DecisionRecord {
+  if (state.interaction?.kind !== "recommendation") {
+    throw new Error("A Blueprint recommendation is not active.");
+  }
+  return buildDecisionRecordFromItem(state.interaction, response);
+}
+
+export function applyRecommendationBatch(
+  state: BlueprintState,
+  submissions: RecommendationDecisionSubmission[],
+  existingDecisions: DecisionRecord[],
+) {
+  if (state.interaction?.kind !== "recommendations") {
+    throw new Error("Consolidated Blueprint decisions are not active.");
+  }
+  const parsed = submissions.map((submission) =>
+    RecommendationDecisionSubmissionSchema.parse(submission),
+  );
+  const byId = new Map(
+    parsed.map((submission) => [submission.decisionId, submission]),
+  );
+  if (byId.size !== state.interaction.items.length) {
+    throw new Error("Respond to each applicable Blueprint recommendation once.");
+  }
+  const decisions = state.interaction.items.map((item) => {
+    const submission = byId.get(item.decision_id);
+    if (!submission) {
+      throw new Error("Respond to each applicable Blueprint recommendation once.");
+    }
+    return buildDecisionRecordFromItem(item, {
+      outcome: "accepted",
+      acknowledgement: "Decision saved.",
+      clarification_question: null,
+      disposition: submission.disposition,
+      modification: submission.modification ?? null,
+      open_confirmation: submission.openConfirmation ?? null,
+      stop: null,
+    });
+  });
+  const nextState: BlueprintState = {
+    ...state,
+    interaction: null,
+    revision: state.revision + 1,
+  };
+  return {
+    state: evaluateBlueprint(nextState, [
+      ...existingDecisions,
+      ...decisions,
+    ]).state,
+    decisions,
+  };
 }
 
 export function applyRecommendationClarification(

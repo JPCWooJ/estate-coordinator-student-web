@@ -61,18 +61,8 @@ async function expectViewportFit(page: Page) {
 
 async function expectMobileActiveTaskOrder(page: Page, projectName: string) {
   if (projectName !== "mobile-chromium") return;
-  const [task, orientation, history] = await Promise.all([
-    page.locator(".active-task").boundingBox(),
-    page.getByRole("complementary").boundingBox(),
-    page.locator(".conversation-history").boundingBox(),
-  ]);
-  expect(task).not.toBeNull();
-  expect(orientation).not.toBeNull();
-  expect(history).not.toBeNull();
-  expect(task!.y + task!.height).toBeLessThanOrEqual(orientation!.y + 1);
-  expect(orientation!.y + orientation!.height).toBeLessThanOrEqual(
-    history!.y + 1,
-  );
+  await expect(page.locator(".workspace-aside, .conversation-history")).toHaveCount(0);
+  await expect(page.locator(".rescue-surface")).toBeVisible();
 }
 
 function textPdf(text: string) {
@@ -112,16 +102,10 @@ test("uninterrupted zero-turn foundation reaches Final Review through residual d
   await expect(
     page.getByRole("heading", { name: "Protect beneficiaries while preserving useful access" }),
   ).toBeVisible();
-  await expect(page.getByText("Blueprint Decisions", { exact: true }).first()).toBeVisible();
+  await expect(page.getByText("Blueprint planning", { exact: true }).first()).toBeVisible();
   await expect(page.getByText("A focused evidence check")).toHaveCount(0);
   await expect(page.getByText(/Stage\s+[1-7]/i)).toHaveCount(0);
-  const orientation = page.getByRole("complementary");
-  await expect(orientation.getByRole("heading", { name: "What to Expect" })).toBeVisible();
-  await expect(orientation).toContainText(
-    "The Estate Coordinator will recommend a starting point before asking for your response.",
-  );
-  await expect(orientation).not.toContainText("Professional boundary");
-  await expect(orientation).not.toContainText("Protecting your information");
+  await expect(page.locator(".workspace-aside, .conversation-history")).toHaveCount(0);
   await expectViewportFit(page);
 
   const beneficiary = await answer(page, "I accept this recommendation.");
@@ -171,7 +155,7 @@ test("uninterrupted zero-turn foundation reaches Final Review through residual d
     "I accept this administration and liquidity direction.",
   );
   await expect(
-    page.getByRole("heading", { name: "Review your Estate Blueprint" }),
+    page.getByRole("heading", { name: "Review your target-state design" }),
   ).toBeVisible();
   expect(finalReview.matter.decisions).toHaveLength(6);
   expect(finalReview.matter.blueprintState.completed_gates).toContain(6);
@@ -204,7 +188,7 @@ test("triggered evidence remains focused and treats uploaded PDF text only as ev
   const id = await seed(page, "triggered");
   await page.goto(`/matter/${id}`);
 
-  await expect(page.getByRole("heading", { name: "A focused evidence check" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "A specific external arrangement may affect a decision" })).toBeVisible();
   await expect(page.getByText(/Do not upload your own estate-planning documents/)).toBeVisible();
   await expectViewportFit(page);
   await page.getByLabel("Relevant PDF").setInputFiles({
@@ -218,7 +202,7 @@ test("triggered evidence remains focused and treats uploaded PDF text only as ev
   await expect(
     page.getByRole("heading", { name: "Protect beneficiaries while preserving useful access" }),
   ).toBeVisible();
-  await expect(page.getByRole("heading", { name: "A focused evidence check" })).toHaveCount(0);
+  await expect(page.getByRole("heading", { name: "A specific external arrangement may affect a decision" })).toHaveCount(0);
   await expectViewportFit(page);
   const saved = await page.evaluate(async (matterId) => {
     const response = await fetch(`/api/matters/${matterId}`);
@@ -241,7 +225,7 @@ test("triggered evidence can continue with an explicit dependency when unavailab
   await expect(
     page.getByRole("heading", { name: "Protect beneficiaries while preserving useful access" }),
   ).toBeVisible();
-  await expect(page.getByRole("heading", { name: "A focused evidence check" })).toHaveCount(0);
+  await expect(page.getByRole("heading", { name: "A specific external arrangement may affect a decision" })).toHaveCount(0);
   await expectViewportFit(page);
   const saved = await page.evaluate(async (matterId) => {
     const response = await fetch(`/api/matters/${matterId}`);

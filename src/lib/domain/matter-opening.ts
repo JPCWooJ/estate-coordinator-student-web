@@ -10,7 +10,7 @@ import {
 export { OutcomeCodeSchema } from "./intake";
 export type { OutcomeCode } from "./intake";
 
-export const WORKFLOW_VERSION = "EC_MATTER_OPENING_0.4";
+export const WORKFLOW_VERSION = "EC_MVP_RESCUE_1.0";
 
 type OutcomeCode = z.infer<typeof OutcomeCodeSchema>;
 
@@ -37,6 +37,10 @@ export const MatterClassificationSchema = z.enum([
 ]);
 
 export const OpeningStepSchema = z.enum([
+  "INTAKE_GOALS_FAMILY",
+  "INTAKE_PLANNING_CONTEXT",
+  "INTAKE_TEAM_CONTINUITY",
+  "INTAKE_FINANCIAL_RANGE",
   "MO01_OUTCOMES",
   "MO01_PRIORITIES",
   "MO01_GOAL_FOLLOWUP",
@@ -248,5 +252,5 @@ export function createInitialRecord(matterId: string): MatterOpeningRecord {
 }
 
 export function createInitialWorkflowState(): WorkflowState {
-  return { step: "MO01_OUTCOMES", clarification: null, stop: null };
+  return { step: "INTAKE_GOALS_FAMILY", clarification: null, stop: null };
 }

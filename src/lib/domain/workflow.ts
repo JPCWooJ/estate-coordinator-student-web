@@ -35,6 +35,10 @@ const OUTCOME_FOLLOWUP_QUESTIONS: Record<OutcomeCode, string> = {
 };
 
 const STEP_LABELS: Record<OpeningStep, string> = {
+  INTAKE_GOALS_FAMILY: "Goals, family, and beneficiary intent",
+  INTAKE_PLANNING_CONTEXT: "Current plan and planning context",
+  INTAKE_TEAM_CONTINUITY: "Team and continuity",
+  INTAKE_FINANCIAL_RANGE: "Financial planning range",
   MO01_OUTCOMES: "Your estate-planning priorities",
   MO01_PRIORITIES: "Your top three priorities",
   MO01_GOAL_FOLLOWUP: "What success looks like",
@@ -54,6 +58,10 @@ const STEP_LABELS: Record<OpeningStep, string> = {
 };
 
 const STEP_PROGRESS: Record<OpeningStep, number> = {
+  INTAKE_GOALS_FAMILY: USER_JOURNEY_PROGRESS.estatePlanningPriorities.outcomes,
+  INTAKE_PLANNING_CONTEXT: USER_JOURNEY_PROGRESS.estatePlanningPriorities.currentPlan,
+  INTAKE_TEAM_CONTINUITY: USER_JOURNEY_PROGRESS.estatePlanningPriorities.contacts,
+  INTAKE_FINANCIAL_RANGE: USER_JOURNEY_PROGRESS.planningFoundation,
   MO01_OUTCOMES: USER_JOURNEY_PROGRESS.estatePlanningPriorities.outcomes,
   MO01_PRIORITIES: USER_JOURNEY_PROGRESS.estatePlanningPriorities.priorities,
   MO01_GOAL_FOLLOWUP:
@@ -111,6 +119,14 @@ export function getCanonicalQuestion(
   if (state.clarification) return state.clarification.question;
 
   switch (state.step) {
+    case "INTAKE_GOALS_FAMILY":
+      return "Tell us what matters most and who your plan should benefit or protect.";
+    case "INTAKE_PLANNING_CONTEXT":
+      return "Tell us about your current plan, timing, location, and material complexity.";
+    case "INTAKE_TEAM_CONTINUITY":
+      return "Provide the key people and responsibilities involved in your estate planning.";
+    case "INTAKE_FINANCIAL_RANGE":
+      return "Provide approximate planning ranges and the boundaries your plan should preserve.";
     case "MO01_OUTCOMES":
       return "If this estate-planning process works exactly as you hope, what will it accomplish for you? Tell me what matters most, and if you can, put your top three priorities in order.";
     case "MO01_PRIORITIES":
@@ -490,6 +506,19 @@ export function confirmOpening(
     record: {
       ...record,
       matter_status: "BLUEPRINT_READY" as const,
+      canonical_intake: record.canonical_intake
+        ? {
+            ...record.canonical_intake,
+            fieldMeta: Object.fromEntries(
+              Object.entries(record.canonical_intake.fieldMeta).map(
+                ([fieldId, metadata]) => [
+                  fieldId,
+                  { ...metadata, confirmed: true },
+                ],
+              ),
+            ),
+          }
+        : undefined,
       principal_confirmed: "yes" as const,
       confirmation_date: confirmedAt,
     },

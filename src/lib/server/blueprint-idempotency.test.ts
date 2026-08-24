@@ -331,6 +331,7 @@ function confirmedOpening(
 ): MatterOpeningRecord {
   return {
     ...createInitialRecord(MATTER_ID),
+    canonical_intake: undefined,
     matter_status: "BLUEPRINT_READY",
     desired_outcomes: ["intended_transfer", "incapacity_readiness"],
     top_three_priorities: [
@@ -554,8 +555,10 @@ describe("Blueprint server/API idempotency", () => {
       routeContext,
     );
     expect(stale.status).toBe(400);
-    await expect(stale.json()).resolves.toEqual({
+    await expect(stale.json()).resolves.toMatchObject({
       error: "stale blueprint state",
+      category: "revision_conflict",
+      correlationId: expect.any(String),
     });
     expect(database.messages).toHaveLength(2);
     expect(database.decisions).toHaveLength(1);

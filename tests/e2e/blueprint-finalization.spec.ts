@@ -48,7 +48,7 @@ async function reachFinalReview(page: Page, matterId: string) {
   await answer(page, "I accept this tax and transfer direction.");
   await answer(page, "I accept this administration and liquidity direction.");
   await expect(
-    page.getByRole("heading", { name: "Review your Estate Blueprint" }),
+    page.getByRole("heading", { name: "Review your target-state design" }),
   ).toBeVisible();
 }
 
@@ -61,12 +61,12 @@ test("Final Review correction, immutable generation, preview, PDF, reload, and o
   const beneficiaryBefore = await page
     .getByTestId("final-review-beneficiary-architecture")
     .textContent();
-  await page.getByRole("button", { name: "I need to correct something" }).click();
+  await page.getByRole("button", { name: "Correct one section" }).click();
   await page
-    .getByLabel("Describe the Final Review correction")
+    .getByLabel("Describe the one section and replacement direction")
     .fill("Change the lifetime-security floor to $6 million.");
   await page
-    .getByRole("button", { name: "Save Final Review correction" })
+    .getByRole("button", { name: "Save correction" })
     .click();
   await expect(page.getByTestId("final-review-planning-baseline")).toContainText(
     "Preserve $6 million.",
@@ -99,7 +99,7 @@ test("Final Review correction, immutable generation, preview, PDF, reload, and o
   ).toBeVisible();
   await expect(page.getByRole("progressbar")).toHaveAttribute(
     "aria-valuenow",
-    "100",
+    "7",
   );
   await expect(page.getByRole("link", { name: "Download PDF" })).toHaveAttribute(
     "href",

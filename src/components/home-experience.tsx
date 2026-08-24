@@ -61,23 +61,18 @@ export function HomeExperience() {
     };
   }, [router]);
 
-  async function acknowledge() {
-    if (!accepted) return;
-    setBusy(true);
-    const response = await fetch("/api/beta", { method: "POST" });
-    setBusy(false);
-    if (!response.ok) {
-      setError("The acknowledgement could not be saved.");
-      return;
-    }
-    const payload = await fetchHomePayload();
-    setSession(payload.session);
-    setMatters(payload.matters);
-  }
-
   async function startMatter() {
+    if (!session?.betaAcknowledged && !accepted) return;
     setBusy(true);
     setError("");
+    if (!session?.betaAcknowledged) {
+      const acknowledgement = await fetch("/api/beta", { method: "POST" });
+      if (!acknowledgement.ok) {
+        setBusy(false);
+        setError("The privacy acknowledgement could not be saved.");
+        return;
+      }
+    }
     const response = await fetch("/api/matters", { method: "POST" });
     const data = await response.json();
     setBusy(false);
@@ -97,16 +92,29 @@ export function HomeExperience() {
     <div className="app-shell">
       <AppHeader email={session.user.email} />
       <main className="home-main">
-        {!session.betaAcknowledged ? (
-          <section className="notice-card" aria-labelledby="beta-title">
-            <div className="eyebrow">Before you begin</div>
-            <h1 id="beta-title">Private estate-planning workspace</h1>
+        {matters.length === 0 ? (
+          <section className="notice-card orientation-card" aria-labelledby="orientation-title">
+            <div className="eyebrow">Welcome to your private planning workspace</div>
+            <h1 id="orientation-title">Build the foundation for your Estate Blueprint</h1>
             <div className="notice-copy">
               <p>
-                You are starting a guided planning conversation to establish your
-                priorities, people, timeline, and planning context before Blueprint
-                recommendations begin.
+                In approximately 10–15 minutes, you will organize the goals, people,
+                current planning, team, and broad financial ranges that should shape
+                your estate plan.
               </p>
+              <h2>Helpful information to have nearby</h2>
+              <ul>
+                <li>Names and roles of family members, advisers, and trusted backups.</li>
+                <li>The kinds and approximate age of existing estate documents.</li>
+                <li>Broad asset, liability, and lifetime-security ranges—never account-level detail.</li>
+              </ul>
+              <h2>What you will receive</h2>
+              <p>
+                You will review a professional Planning Summary, make the material
+                Blueprint decisions that apply to you, and receive a web and PDF
+                Estate Blueprint to use with your professional advisers.
+              </p>
+              <h2>Privacy and professional boundaries</h2>
               <p>
                 Estate Coordinator supports planning and organization. It does not
                 provide legal, tax, investment, or valuation advice. Confirm final
@@ -114,38 +122,25 @@ export function HomeExperience() {
               </p>
               <ul>
                 <li>
-                  Share only the planning context needed here, and avoid unnecessary
-                  sensitive personal or financial information.
+                  Share only the planning context needed here; do not enter account
+                  numbers, government identifiers, passwords, or private keys.
                 </li>
                 <li>
-                  Do not enter passwords, private keys, seed phrases, or full
-                  financial-account or government identifiers.
-                </li>
-                <li>
-                  Existing estate-planning documents are not reviewed in this phase.
-                </li>
-                <li>
-                  Your answers are saved in your private workspace so you can resume.
-                  Sign out when finished on a shared device.
+                  Your answers are saved so you can resume. Sign out when finished
+                  on a shared device.
                 </li>
               </ul>
             </div>
-            <label className="check-row">
-              <input
-                type="checkbox"
-                checked={accepted}
-                onChange={(event) => setAccepted(event.target.checked)}
-              />
-              <span>
-                I understand the process and privacy terms, and want to continue.
-              </span>
-            </label>
+            {!session.betaAcknowledged ? <label className="check-row">
+              <input type="checkbox" checked={accepted} onChange={(event) => setAccepted(event.target.checked)} />
+              <span>I understand the process, privacy terms, and professional boundaries.</span>
+            </label> : null}
             <button
               className="button button-primary"
-              onClick={acknowledge}
-              disabled={!accepted || busy}
+              onClick={startMatter}
+              disabled={(!session.betaAcknowledged && !accepted) || busy}
             >
-              {busy ? "Saving…" : "Acknowledge and continue"}
+              {busy ? "Opening your plan…" : "Start my Estate Blueprint"}
             </button>
           </section>
         ) : (
@@ -159,15 +154,6 @@ export function HomeExperience() {
                   conversation.
                 </p>
               </div>
-              {matters.length === 0 && (
-                <button
-                  className="button button-primary"
-                  onClick={startMatter}
-                  disabled={busy}
-                >
-                  {busy ? "Opening…" : "Start planning priorities"}
-                </button>
-              )}
             </div>
 
             <div className="matter-list">

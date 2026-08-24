@@ -3,9 +3,15 @@ import "server-only";
 import { randomUUID } from "node:crypto";
 
 import {
+  applyStructuredIntake,
+  StructuredIntakeSubmission,
+} from "@/lib/domain/intake";
+import {
+  applicableRecommendationDomains,
   applyFinalReviewCorrection,
   applyBlueprintAnswer,
   applyEvidenceTreatment,
+  applyRecommendationBatch,
   applyRecommendationResponse,
   BlueprintState,
   BlueprintStateSchema,
@@ -25,6 +31,8 @@ import {
   PlanningBaseline,
   publishBlueprint,
   presentRecommendation,
+  presentRecommendations,
+  RecommendationDecisionSubmission,
 } from "@/lib/domain/blueprint";
 import {
   appendGeneratedResponse,
@@ -102,9 +110,18 @@ export type MatterView = MatterSummary & {
   messages: MatterMessage[];
   currentQuestion: string;
   savedAt: string;
+  revision: number;
   blueprintState: BlueprintState | null;
   decisions: DecisionRecord[];
   blueprint: BlueprintArtifact | null;
+};
+
+export type IntakeCommitReceipt = {
+  operationId: string;
+  matterId: string;
+  revision: number;
+  committedAt: string;
+  status: "committed";
 };
 
 type StoredBlueprintArtifact = BlueprintArtifact & {
@@ -224,9 +241,10 @@ function syntheticView(matter: SyntheticMatter): MatterView {
     }),
     record: matter.record,
     workflowState: matter.state,
-    messages: matter.messages,
+    messages: [],
     currentQuestion: getCanonicalQuestion(matter.record, matter.state),
     savedAt: matter.updatedAt,
+    revision: matter.revision,
     blueprintState: matter.blueprintState,
     decisions: matter.decisions,
     blueprint: matter.blueprint
@@ -321,11 +339,15 @@ export async function createMatter(userId: string) {
     return id;
   }
 
+  const id = randomUUID();
   const supabase = createAdminSupabaseClient();
-  const { data, error } = await supabase.rpc("create_slice1_matter", {
+  const { data, error } = await supabase.rpc("create_mvp_rescue_matter", {
+    p_matter_id: id,
     p_owner_id: userId,
     p_name: "My Estate Plan",
     p_workflow_version: WORKFLOW_VERSION,
+    p_record: createInitialRecord(id),
+    p_workflow_state: createInitialWorkflowState(),
   });
   if (error) throw error;
   if (!data) throw new Error("The matter could not be created.");
@@ -408,7 +430,6 @@ export async function getMatter(
   const [
     matterResult,
     openingResult,
-    messageResult,
     blueprintResult,
     decisionResult,
     artifactResult,
@@ -421,16 +442,10 @@ export async function getMatter(
       .maybeSingle(),
     supabase
       .from("matter_openings")
-      .select("record,workflow_state,updated_at")
+      .select("record,workflow_state,revision,updated_at")
       .eq("matter_id", matterId)
       .eq("owner_id", userId)
       .maybeSingle(),
-    supabase
-      .from("messages")
-      .select("id,role,step,content,created_at")
-      .eq("matter_id", matterId)
-      .eq("owner_id", userId)
-      .order("created_at", { ascending: true }),
     supabase
       .from("blueprint_states")
       .select("state,updated_at")
@@ -452,7 +467,6 @@ export async function getMatter(
   ]);
   if (matterResult.error) throw matterResult.error;
   if (openingResult.error) throw openingResult.error;
-  if (messageResult.error) throw messageResult.error;
   if (blueprintResult.error) throw blueprintResult.error;
   if (decisionResult.error) throw decisionResult.error;
   if (artifactResult.error) throw artifactResult.error;
@@ -478,20 +492,152 @@ export async function getMatter(
     }),
     record,
     workflowState: state,
-    messages: (messageResult.data ?? []).map((message) => ({
-      id: message.id,
-      role: message.role as MatterMessage["role"],
-      step: message.step,
-      content: message.content,
-      createdAt: message.created_at,
-    })),
+    messages: [],
     currentQuestion: getCanonicalQuestion(record, state),
     savedAt: blueprintResult.data?.updated_at ?? openingResult.data.updated_at,
+    revision: openingResult.data.revision,
     blueprintState,
     decisions,
     blueprint: artifactResult.data
       ? parseBlueprintArtifact(artifactResult.data)
       : null,
+  };
+}
+
+function workflowStateForIntake(record: MatterOpeningRecord): WorkflowState {
+  const section = record.canonical_intake?.currentSection ?? "goals_family";
+  const step: WorkflowState["step"] =
+    section === "goals_family"
+      ? "INTAKE_GOALS_FAMILY"
+      : section === "planning_context"
+        ? "INTAKE_PLANNING_CONTEXT"
+        : section === "team_continuity"
+          ? "INTAKE_TEAM_CONTINUITY"
+          : section === "financial_range"
+            ? "INTAKE_FINANCIAL_RANGE"
+            : "MO08_CONFIRM";
+  return { step, clarification: null, stop: null };
+}
+
+export async function submitStructuredIntake(input: {
+  userId: string;
+  matterId: string;
+  submission: StructuredIntakeSubmission;
+}): Promise<{ matter: MatterView; receipt: IntakeCommitReceipt }> {
+  if (syntheticModeEnabled()) {
+    const matter = requireSyntheticMatter(input.userId, input.matterId);
+    const result = applyStructuredIntake(matter.record, input.submission);
+    if (result.changed) {
+      matter.record = result.record;
+      matter.state = workflowStateForIntake(result.record);
+      matter.revision = result.record.canonical_intake?.revision ?? matter.revision + 1;
+      matter.updatedAt = new Date().toISOString();
+    }
+    return {
+      matter: syntheticView(matter),
+      receipt: {
+        operationId: input.submission.operationId,
+        matterId: input.matterId,
+        revision: matter.revision,
+        committedAt: matter.updatedAt,
+        status: "committed",
+      },
+    };
+  }
+
+  const supabase = createAdminSupabaseClient();
+  const [matterResult, openingResult] = await Promise.all([
+    supabase
+      .from("matters")
+      .select("id,name,status,opening_confirmed_at,updated_at")
+      .eq("id", input.matterId)
+      .eq("owner_id", input.userId)
+      .maybeSingle(),
+    supabase
+      .from("matter_openings")
+      .select("record,workflow_state,revision,updated_at")
+      .eq("matter_id", input.matterId)
+      .eq("owner_id", input.userId)
+      .maybeSingle(),
+  ]);
+  if (matterResult.error) throw matterResult.error;
+  if (openingResult.error) throw openingResult.error;
+  if (!matterResult.data || !openingResult.data) {
+    throw new Error("Matter not found.");
+  }
+  const currentRecord = parseRecord(openingResult.data.record);
+  const currentState = parseState(openingResult.data.workflow_state);
+  const current: MatterView = {
+    ...summary({
+      id: matterResult.data.id,
+      name: matterResult.data.name,
+      status: matterResult.data.status as MatterStatus,
+      state: currentState,
+      blueprintState: null,
+      openingConfirmedAt: matterResult.data.opening_confirmed_at,
+      updatedAt: matterResult.data.updated_at,
+    }),
+    record: currentRecord,
+    workflowState: currentState,
+    messages: [],
+    currentQuestion: getCanonicalQuestion(currentRecord, currentState),
+    savedAt: openingResult.data.updated_at,
+    revision: openingResult.data.revision,
+    blueprintState: null,
+    decisions: [],
+    blueprint: null,
+  };
+  const result = applyStructuredIntake(current.record, input.submission);
+  const record = result.record;
+  const workflowState = workflowStateForIntake(record);
+  const { data, error } = await supabase.rpc("save_mvp_rescue_intake", {
+    p_matter_id: input.matterId,
+    p_owner_id: input.userId,
+    p_operation_id: input.submission.operationId,
+    p_expected_revision: current.revision,
+    p_record: record,
+    p_workflow_state: workflowState,
+  });
+  if (error) throw error;
+  if (!data || typeof data !== "object") {
+    throw new Error("The intake save did not return a commit receipt.");
+  }
+  const payload = data as {
+    record: unknown;
+    workflow_state: unknown;
+    revision: number;
+    committed_at: string;
+  };
+  const savedRecord = parseRecord(payload.record);
+  const savedState = parseState(payload.workflow_state);
+  const updatedAt = payload.committed_at;
+  const matter: MatterView = {
+    ...current,
+    ...summary({
+      id: current.id,
+      name: current.name,
+      status: "matter_opening",
+      state: savedState,
+      blueprintState: current.blueprintState,
+      openingConfirmedAt: current.openingConfirmedAt,
+      updatedAt,
+    }),
+    record: savedRecord,
+    workflowState: savedState,
+    messages: [],
+    currentQuestion: getCanonicalQuestion(savedRecord, savedState),
+    savedAt: updatedAt,
+    revision: payload.revision,
+  };
+  return {
+    matter,
+    receipt: {
+      operationId: input.submission.operationId,
+      matterId: input.matterId,
+      revision: payload.revision,
+      committedAt: updatedAt,
+      status: "committed",
+    },
   };
 }
 
@@ -721,6 +867,24 @@ async function prepareBlueprintState(
 ) {
   const evaluation = evaluateBlueprint(state, decisions);
   if (!evaluation.recommendationNeeded) return evaluation.state;
+  if (record.canonical_intake) {
+    const domains = applicableRecommendationDomains(
+      evaluation.state,
+      decisions,
+    );
+    const recommendations = await Promise.all(
+      domains.map(async (domain) => ({
+        domain,
+        content: await generateBlueprintRecommendation({
+          domain,
+          state: evaluation.state,
+          openingRecord: record,
+          decisions,
+        }),
+      })),
+    );
+    return presentRecommendations(evaluation.state, recommendations);
+  }
   const recommendation = await generateBlueprintRecommendation({
     domain: evaluation.recommendationNeeded,
     state: evaluation.state,
@@ -732,6 +896,53 @@ async function prepareBlueprintState(
     evaluation.recommendationNeeded,
     recommendation,
   );
+}
+
+export async function submitBlueprintDecisions(input: {
+  userId: string;
+  matterId: string;
+  operationId: string;
+  decisions: RecommendationDecisionSubmission[];
+}) {
+  const acceptedRetry = await getAcceptedBlueprintRetry(
+    input.userId,
+    input.matterId,
+    input.operationId,
+  );
+  if (acceptedRetry) return acceptedRetry;
+  const matter = await getMatter(input.userId, input.matterId);
+  if (!matter?.blueprintState) {
+    throw new Error("Blueprint decisions are not ready.");
+  }
+  const expectedState = matter.blueprintState;
+  const applied = applyRecommendationBatch(
+    expectedState,
+    input.decisions,
+    matter.decisions,
+  );
+
+  if (syntheticModeEnabled()) {
+    const synthetic = requireSyntheticMatter(input.userId, input.matterId);
+    synthetic.blueprintState = applied.state;
+    synthetic.decisions.push(...applied.decisions);
+    synthetic.processedTurnKeys.add(input.operationId);
+    synthetic.updatedAt = new Date().toISOString();
+    return syntheticView(synthetic);
+  }
+
+  const supabase = createAdminSupabaseClient();
+  const { error } = await supabase.rpc("apply_blueprint_decisions_batch", {
+    p_matter_id: input.matterId,
+    p_owner_id: input.userId,
+    p_operation_id: input.operationId,
+    p_expected_state: expectedState,
+    p_state: applied.state,
+    p_decisions: applied.decisions,
+  });
+  if (error) throw error;
+  const updated = await getMatter(input.userId, input.matterId);
+  if (!updated) throw new Error("Matter not found after Blueprint decisions.");
+  return updated;
 }
 
 export async function startBlueprint(input: {
@@ -1273,6 +1484,7 @@ export async function seedSyntheticBlueprintScenario(input: {
   const now = new Date().toISOString();
   const record: MatterOpeningRecord = {
     ...createInitialRecord(id),
+    canonical_intake: undefined,
     matter_status: "BLUEPRINT_READY",
     desired_outcomes: [
       "intended_transfer",

@@ -238,7 +238,11 @@ describe("Matter Opening v0.4 workflow", () => {
 
   it("derives priority follow-ups from the record without queue state", () => {
     let record = createInitialRecord("aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa");
-    let state = createInitialWorkflowState();
+    let state: WorkflowState = {
+      step: "MO01_OUTCOMES",
+      clarification: null,
+      stop: null,
+    };
     ({ record, state } = advance(
       record,
       state,
@@ -331,7 +335,11 @@ describe("Matter Opening v0.4 workflow", () => {
 
   it("persists clarification as the active question without advancing or mutating the record", () => {
     const record = createInitialRecord("aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa");
-    const state = createInitialWorkflowState();
+    const state: WorkflowState = {
+      step: "MO01_OUTCOMES",
+      clarification: null,
+      stop: null,
+    };
     const result = advance(record, state, {
       outcome: "clarification",
       acknowledgement: "",

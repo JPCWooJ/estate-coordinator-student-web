@@ -37,7 +37,7 @@ async function acknowledgeBeta(page: Page) {
     await page.evaluate(async () => (await fetch("/api/beta", { method: "POST" })).status),
   ).toBe(200);
   await page.reload();
-  await expect(page.getByRole("heading", { name: "Estate Planning Priorities" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Build the foundation for your Estate Blueprint" })).toBeVisible();
 }
 
 async function createMatter(page: Page) {
