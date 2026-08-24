@@ -237,9 +237,7 @@ function fieldMetadata(
   );
 }
 
-export function createCanonicalIntakeState(
-  _now = new Date().toISOString(),
-): CanonicalIntakeState {
+export function createCanonicalIntakeState(): CanonicalIntakeState {
   return {
     currentSection: "goals_family",
     completedSections: [],
@@ -348,7 +346,7 @@ export function applyStructuredIntake(
   now = new Date().toISOString(),
 ) {
   const submission = StructuredIntakeSubmissionSchema.parse(inputSubmission);
-  const current = inputRecord.canonical_intake ?? createCanonicalIntakeState(now);
+  const current = inputRecord.canonical_intake ?? createCanonicalIntakeState();
   if (current.processedOperationIds.includes(submission.operationId)) {
     return { record: inputRecord, changed: false };
   }

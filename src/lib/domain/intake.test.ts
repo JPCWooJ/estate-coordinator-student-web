@@ -19,7 +19,7 @@ function submission(
 
 describe("canonical grouped intake", () => {
   it("starts every new matter at the goals, family, and beneficiary section", () => {
-    const state = createCanonicalIntakeState(NOW);
+    const state = createCanonicalIntakeState();
 
     expect(state.currentSection).toBe("goals_family");
     expect(state.completedSections).toEqual([]);
