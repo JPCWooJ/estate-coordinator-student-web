@@ -1028,6 +1028,372 @@ th {
   border-top: 3px solid var(--error);
 }
 
+.final-review-card {
+  margin-top: 16px;
+  border: 1px solid var(--line);
+  border-top: 5px solid var(--forest-2);
+  border-radius: 12px;
+  padding: clamp(24px, 5vw, 42px);
+  background: var(--paper);
+  box-shadow: 0 18px 54px rgba(36, 65, 54, 0.07);
+}
+
+.final-review-card > h2 {
+  margin-bottom: 12px;
+  font-size: clamp(1.8rem, 4vw, 2.7rem);
+}
+
+.final-review-intro {
+  max-width: 760px;
+  color: var(--muted);
+}
+
+.final-review-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+  margin-top: 28px;
+}
+
+.final-review-grid > section {
+  min-width: 0;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  padding: 18px;
+  background: var(--white);
+}
+
+.final-review-grid h3,
+.blueprint-preview h4 {
+  margin: 0 0 8px;
+  color: var(--forest-2);
+  font-family: Arial, Helvetica, sans-serif;
+  font-size: 0.72rem;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+}
+
+.final-review-grid p,
+.final-review-grid ul {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.84rem;
+}
+
+.final-review-grid ul {
+  padding-left: 20px;
+}
+
+.final-review-wide {
+  grid-column: 1 / -1;
+}
+
+.blueprint-preview {
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: var(--paper);
+  box-shadow: 0 22px 70px rgba(26, 48, 40, 0.09);
+}
+
+.blueprint-cover {
+  display: flex;
+  min-height: 330px;
+  align-items: end;
+  justify-content: space-between;
+  gap: 36px;
+  padding: clamp(34px, 7vw, 72px);
+  color: var(--white);
+  background:
+    radial-gradient(circle at 80% 15%, rgba(183, 138, 69, 0.2), transparent 34%),
+    var(--forest);
+}
+
+.blueprint-cover h2 {
+  margin: 10px 0 14px;
+  color: var(--white);
+  font-size: clamp(2.65rem, 7vw, 5.7rem);
+  line-height: 0.95;
+}
+
+.blueprint-cover p {
+  max-width: 610px;
+  margin: 0;
+  color: #dbe7df;
+  font-size: clamp(1rem, 2.2vw, 1.35rem);
+}
+
+.blueprint-kicker,
+.blueprint-cover-meta span,
+.blueprint-section-number,
+.blueprint-next-action > span {
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 0.11em;
+  text-transform: uppercase;
+}
+
+.blueprint-kicker,
+.blueprint-section-number {
+  color: #d1ad69;
+}
+
+.blueprint-cover-meta {
+  display: grid;
+  flex: 0 0 230px;
+  gap: 9px;
+  padding-top: 18px;
+  border-top: 1px solid rgba(255, 255, 255, 0.35);
+  color: #dbe7df;
+}
+
+.blueprint-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 24px;
+  padding: 18px clamp(24px, 6vw, 64px);
+  border-bottom: 1px solid var(--line);
+  background: #e9eee9;
+}
+
+.blueprint-toolbar div {
+  display: grid;
+  gap: 2px;
+}
+
+.blueprint-toolbar span {
+  color: var(--muted);
+  font-size: 0.8rem;
+}
+
+.blueprint-section {
+  position: relative;
+  padding: clamp(38px, 7vw, 72px) clamp(24px, 7vw, 76px);
+  border-bottom: 1px solid var(--line);
+}
+
+.blueprint-section:last-child {
+  border-bottom: 0;
+}
+
+.blueprint-section > h3 {
+  max-width: 760px;
+  margin: 8px 0 24px;
+  color: var(--forest);
+  font-family: Georgia, "Times New Roman", serif;
+  font-size: clamp(1.8rem, 4vw, 3rem);
+  font-weight: 500;
+  letter-spacing: -0.03em;
+  line-height: 1.08;
+}
+
+.blueprint-lede {
+  max-width: 840px;
+  color: var(--muted);
+  font-family: Georgia, "Times New Roman", serif;
+  font-size: 1.05rem;
+}
+
+.blueprint-columns,
+.blueprint-component-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+  margin: 28px 0;
+}
+
+.blueprint-panel,
+.blueprint-component,
+.blueprint-confirmations > article,
+.blueprint-next-action {
+  min-width: 0;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  padding: 20px;
+  background: var(--white);
+}
+
+.blueprint-panel ul,
+.blueprint-flow-notes,
+.blueprint-component dl,
+.blueprint-component dd {
+  margin: 0;
+}
+
+.blueprint-panel ul,
+.blueprint-flow-notes {
+  padding-left: 20px;
+  color: var(--muted);
+}
+
+.blueprint-panel li + li,
+.blueprint-flow-notes li + li {
+  margin-top: 7px;
+}
+
+.blueprint-baseline {
+  display: grid;
+  margin: 26px 0;
+  border-top: 1px solid var(--line);
+}
+
+.blueprint-baseline > div {
+  display: grid;
+  grid-template-columns: minmax(150px, 0.36fr) 1fr;
+  gap: 20px;
+  padding: 15px 0;
+  border-bottom: 1px solid var(--line);
+}
+
+.blueprint-baseline dt,
+.blueprint-component dt {
+  color: var(--forest-2);
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.blueprint-baseline dd,
+.blueprint-component dd {
+  color: var(--muted);
+}
+
+.blueprint-schematic {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  margin: 32px 0 18px;
+  border-radius: 10px;
+  background: var(--forest);
+}
+
+.blueprint-schematic-step {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  justify-content: center;
+  color: var(--white);
+}
+
+.blueprint-schematic-step span {
+  padding: 22px 16px;
+  font-size: 0.78rem;
+  text-align: center;
+}
+
+.blueprint-schematic-step b {
+  color: #d1ad69;
+  font-size: 1.2rem;
+}
+
+.blueprint-component h4 {
+  color: var(--ink);
+  font-family: Georgia, "Times New Roman", serif;
+  font-size: 1.15rem;
+  letter-spacing: -0.01em;
+  text-transform: none;
+}
+
+.blueprint-component dl {
+  display: grid;
+  gap: 15px;
+}
+
+.blueprint-component dd {
+  margin-top: 3px;
+  font-size: 0.84rem;
+}
+
+.blueprint-boundary,
+.blueprint-advice-boundary {
+  padding: 16px 18px;
+  border-left: 3px solid var(--gold);
+  color: var(--muted);
+  background: #eef1ec;
+  font-size: 0.82rem;
+}
+
+.blueprint-confirmations {
+  display: grid;
+  gap: 10px;
+  margin-bottom: 24px;
+}
+
+.blueprint-confirmations h4 {
+  color: var(--ink);
+  font-size: 0.9rem;
+  letter-spacing: 0;
+  text-transform: none;
+}
+
+.blueprint-confirmations p,
+.blueprint-confirmations span {
+  color: var(--muted);
+  font-size: 0.8rem;
+}
+
+.blueprint-confirmations p {
+  margin-bottom: 6px;
+}
+
+.blueprint-next-steps {
+  display: grid;
+  margin: 0;
+  padding: 0;
+  counter-reset: blueprint-step;
+  list-style: none;
+}
+
+.blueprint-next-steps li {
+  display: grid;
+  grid-template-columns: 42px 1fr;
+  gap: 14px;
+  align-items: center;
+  padding: 14px 0;
+  border-bottom: 1px solid var(--line);
+  counter-increment: blueprint-step;
+}
+
+.blueprint-next-steps li::before {
+  display: grid;
+  width: 34px;
+  height: 34px;
+  place-items: center;
+  border-radius: 50%;
+  color: var(--white);
+  background: var(--forest-2);
+  content: counter(blueprint-step);
+  font-size: 0.76rem;
+  font-weight: 700;
+}
+
+.blueprint-next-action {
+  display: grid;
+  align-content: center;
+  gap: 8px;
+  border-color: #ceb682;
+  background: #f5efe2;
+}
+
+.blueprint-next-action > span {
+  color: var(--gold-text);
+}
+
+.blueprint-team {
+  margin: 34px 0;
+}
+
+.blueprint-team > div {
+  display: grid;
+  grid-template-columns: 0.7fr 1fr 1fr;
+  gap: 14px;
+  padding: 12px 0;
+  border-bottom: 1px solid var(--line);
+  color: var(--muted);
+  font-size: 0.82rem;
+}
+
 .centered-state {
   display: grid;
   min-height: 100dvh;
@@ -1097,6 +1463,10 @@ th {
   .conversation-history {
     grid-column: 1;
     grid-row: 3;
+  }
+
+  .blueprint-schematic {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
 
@@ -1313,6 +1683,52 @@ th {
 
   .summary-grid > section {
     padding: 18px;
+  }
+
+  .final-review-grid,
+  .blueprint-columns,
+  .blueprint-component-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .final-review-wide {
+    grid-column: auto;
+  }
+
+  .blueprint-cover,
+  .blueprint-toolbar {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .blueprint-cover {
+    min-height: 420px;
+  }
+
+  .blueprint-cover-meta {
+    flex-basis: auto;
+  }
+
+  .blueprint-toolbar .button {
+    width: 100%;
+  }
+
+  .blueprint-baseline > div,
+  .blueprint-team > div {
+    grid-template-columns: 1fr;
+    gap: 5px;
+  }
+
+  .blueprint-schematic {
+    grid-template-columns: 1fr;
+  }
+
+  .blueprint-schematic-step {
+    flex-direction: column;
+  }
+
+  .blueprint-schematic-step b {
+    transform: rotate(90deg);
   }
 }
 

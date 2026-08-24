@@ -131,7 +131,7 @@ test("mandatory Matter Opening stop retains non-complete progress across reload"
   await expect(page.locator(".progress-copy strong")).toHaveText("5%");
 });
 
-test("intended entry runs uninterrupted through Matter Opening and the Stage 5 endpoint", async ({
+test("intended entry runs uninterrupted through Matter Opening and Final Review", async ({
   page,
 }) => {
   await resetSyntheticState(page);
@@ -210,25 +210,42 @@ test("intended entry runs uninterrupted through Matter Opening and the Stage 5 e
   );
   await answerAndTrack("I accept this starting structure.");
   await answerAndTrack("I accept this separate treatment.");
-  const completed = await answerAndTrack("I accept this readiness progression.");
+  const stageFive = await answerAndTrack("I accept this readiness progression.");
 
   await expect(
-    page.getByRole("heading", { name: "Your Blueprint decisions are saved" }),
+    page.getByRole("heading", {
+      name: "Preserve lifetime security while evaluating tax and transfer opportunities",
+    }),
   ).toBeVisible();
-  expect(completed.matter.blueprintState.completed_gates).toContain(5);
-  expect(completed.matter.decisions.map((decision: { decision_id: string }) => decision.decision_id)).toEqual([
+  expect(stageFive.matter.blueprintState.completed_gates).toContain(5);
+  expect(stageFive.matter.decisions.map((decision: { decision_id: string }) => decision.decision_id)).toEqual([
     "BR-004-BENEFICIARY",
     "BR-005-FIDUCIARY-CONTINUITY",
     "BR-005-SPECIAL-ASSET",
     "BR-005-READINESS",
+  ]);
+  await answerAndTrack("I accept this tax and transfer direction.");
+  const finalReview = await answerAndTrack(
+    "I accept this administration and liquidity direction.",
+  );
+  await expect(
+    page.getByRole("heading", { name: "Review your Estate Blueprint" }),
+  ).toBeVisible();
+  expect(finalReview.matter.blueprintState.completed_gates).toContain(6);
+  expect(finalReview.matter.decisions.map((decision: { decision_id: string }) => decision.decision_id)).toEqual([
+    "BR-004-BENEFICIARY",
+    "BR-005-FIDUCIARY-CONTINUITY",
+    "BR-005-SPECIAL-ASSET",
+    "BR-005-READINESS",
+    "BR-006-TAX-TRANSFER",
+    "BR-006-ADMINISTRATION-LIQUIDITY",
   ]);
   expect(
     progress.every(
       (value, index) => index === 0 || value >= progress[index - 1]!,
     ),
   ).toBe(true);
-  await expect(page.locator("body")).not.toContainText("Final Review");
-  await expect(page.locator("body")).not.toContainText("Stage 6");
+  await expect(page.locator("body")).not.toContainText(/Stage\s+[1-7]/i);
 });
 
 test("transport failure preserves an answer and restores retry controls", async ({
@@ -339,14 +356,24 @@ test("Blueprint clarification appears once as the active question", async ({
   );
   await answer(page, "I accept this starting structure.");
   await answer(page, "I accept this separate treatment.");
-  const completed = await answer(page, "I accept this readiness progression.");
+  await answer(page, "I accept this readiness progression.");
 
   await expect(
-    page.getByRole("heading", { name: "Your Blueprint decisions are saved" }),
+    page.getByRole("heading", {
+      name: "Preserve lifetime security while evaluating tax and transfer opportunities",
+    }),
   ).toBeVisible();
-  expect(completed.matter.blueprintState.completed_gates).toContain(5);
+  await answer(page, "I accept this tax and transfer direction.");
+  const finalReview = await answer(
+    page,
+    "I accept this administration and liquidity direction.",
+  );
+  await expect(
+    page.getByRole("heading", { name: "Review your Estate Blueprint" }),
+  ).toBeVisible();
+  expect(finalReview.matter.blueprintState.completed_gates).toContain(6);
   expect(
-    completed.matter.decisions.map(
+    finalReview.matter.decisions.map(
       (decision: { decision_id: string }) => decision.decision_id,
     ),
   ).toEqual([
@@ -354,6 +381,8 @@ test("Blueprint clarification appears once as the active question", async ({
     "BR-005-FIDUCIARY-CONTINUITY",
     "BR-005-SPECIAL-ASSET",
     "BR-005-READINESS",
+    "BR-006-TAX-TRANSFER",
+    "BR-006-ADMINISTRATION-LIQUIDITY",
   ]);
 });
 

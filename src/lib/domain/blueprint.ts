@@ -14,6 +14,8 @@ export const BLUEPRINT_WORKFLOW_VERSION = "EC_ESTATE_BLUEPRINT_0.7";
 export const BlueprintPhaseSchema = z.enum([
   "PLANNING_FOUNDATION",
   "BLUEPRINT_DECISIONS",
+  "FINAL_REVIEW",
+  "ESTATE_BLUEPRINT",
 ]);
 export type BlueprintPhase = z.infer<typeof BlueprintPhaseSchema>;
 
@@ -22,6 +24,8 @@ export const BlueprintGateSchema = z.union([
   z.literal(3),
   z.literal(4),
   z.literal(5),
+  z.literal(6),
+  z.literal(7),
 ]);
 export type BlueprintGate = z.infer<typeof BlueprintGateSchema>;
 
@@ -138,6 +142,9 @@ export const RecommendationDomainSchema = z.enum([
   "fiduciary_continuity",
   "special_asset",
   "readiness",
+  "tax_transfer_strategy",
+  "administration_liquidity",
+  "asset_transfer_strategy",
 ]);
 export type RecommendationDomain = z.infer<typeof RecommendationDomainSchema>;
 
@@ -160,7 +167,10 @@ export type DecisionDisposition = z.infer<typeof DecisionDispositionSchema>;
 export const DecisionRecordSchema = z.object({
   decision_id: z.string().min(1),
   domain: PersistedRecommendationDomainSchema,
+  objective: NullableText.optional(),
   recommendation: z.string().min(1),
+  rationale: NullableText.optional(),
+  alternative_or_tradeoff: NullableText.optional(),
   principal_response: DecisionDispositionSchema,
   modification: NullableText,
   open_confirmation: NullableText,
@@ -171,6 +181,147 @@ export const DecisionRecordSchema = z.object({
     GeneratedResponseMetadataSchema.nullable().optional(),
 });
 export type DecisionRecord = z.infer<typeof DecisionRecordSchema>;
+
+export const EstateTeamMemberSchema = z.object({
+  name: z.string().min(1),
+  firm_or_relationship: z.string().min(1),
+  role: z.string().min(1),
+  contact: z.string().min(1),
+});
+export type EstateTeamMember = z.infer<typeof EstateTeamMemberSchema>;
+
+export const BlueprintSourceContextSchema = z.object({
+  goals_and_priorities: z.array(z.string().min(1)),
+  definition_of_success: NullableText,
+  current_plan_context: NullableText,
+  complexity_flags: z.array(z.string().min(1)),
+  estate_team: z.array(EstateTeamMemberSchema),
+});
+export type BlueprintSourceContext = z.infer<
+  typeof BlueprintSourceContextSchema
+>;
+
+export const FinalReviewProfileSchema = z.object({
+  goals_and_priorities: z.string().min(1),
+  planning_baseline: z.string().min(1),
+  beneficiary_architecture: z.string().min(1),
+  fiduciary_and_continuity_design: z.string().min(1),
+  tax_and_transfer_direction: z.string().min(1),
+  asset_and_liquidity_treatment: z.string().min(1),
+  family_readiness_design: z.string().min(1),
+  material_open_confirmations: z.array(z.string().min(1)),
+});
+export type FinalReviewProfile = z.infer<typeof FinalReviewProfileSchema>;
+
+export const FinalReviewSectionSchema = z.enum([
+  "goals_and_priorities",
+  "planning_baseline",
+  "beneficiary_architecture",
+  "fiduciary_and_continuity_design",
+  "tax_and_transfer_direction",
+  "asset_and_liquidity_treatment",
+  "family_readiness_design",
+  "material_open_confirmations",
+]);
+export type FinalReviewSection = z.infer<typeof FinalReviewSectionSchema>;
+
+export const FinalReviewCorrectionSchema = z.object({
+  section: FinalReviewSectionSchema,
+  replacement: z.string().min(1),
+  acknowledgement: z.string().min(1),
+});
+export type FinalReviewCorrection = z.infer<
+  typeof FinalReviewCorrectionSchema
+>;
+
+export const BlueprintGenerationInputSchema = z.object({
+  blueprint_id: z.string().uuid(),
+  matter_id: z.string().uuid(),
+  client_label: z.string().min(1),
+  workflow_version: z.literal(BLUEPRINT_WORKFLOW_VERSION),
+  frozen_at: z.string().datetime(),
+  profile: FinalReviewProfileSchema,
+  planning_synthesis: PlanningSynthesisSchema,
+  evidence: EvidenceStateSchema,
+  decisions: z.array(DecisionRecordSchema),
+  estate_team: z.array(EstateTeamMemberSchema),
+  developed_before_existing_plan_review: z.literal(true),
+});
+export type BlueprintGenerationInput = z.infer<
+  typeof BlueprintGenerationInputSchema
+>;
+
+const BlueprintAtAGlanceSectionSchema = z.object({
+  key: z.literal("at_a_glance"),
+  title: z.literal("Your Estate Blueprint - At a Glance"),
+  overview: z.array(z.string().min(1)).min(1),
+  objectives: z.array(z.string().min(1)),
+  governing_constraints: z.array(z.string().min(1)),
+  planning_baseline: z.array(
+    z.object({ label: z.string().min(1), value: z.string().min(1) }),
+  ),
+  schematic: z.object({
+    nodes: z.array(z.string().min(1)).min(2),
+    flows: z.array(z.string().min(1)).min(1),
+  }),
+});
+
+const BlueprintPlanWorksSectionSchema = z.object({
+  key: z.literal("plan_works"),
+  title: z.literal("How Your Plan Works"),
+  components: z.array(
+    z.object({
+      title: z.string().min(1),
+      what_it_does: z.string().min(1),
+      why_it_fits: z.string().min(1),
+      tradeoff_or_dependency: z.string().min(1),
+    }),
+  ),
+  operating_detail_note: z.string().min(1),
+});
+
+const BlueprintConfirmationsSectionSchema = z.object({
+  key: z.literal("confirmations"),
+  title: z.literal("What Still Needs to Be Confirmed"),
+  items: z.array(
+    z.object({
+      question: z.string().min(1),
+      why_it_matters: z.string().min(1),
+      owner: z.string().min(1),
+    }),
+  ),
+  approval_boundary: z.string().min(1),
+  existing_plan_boundary: z.string().min(1),
+});
+
+const BlueprintNextStepsSectionSchema = z.object({
+  key: z.literal("next_steps"),
+  title: z.literal("What Happens Next"),
+  steps: z.array(z.string().min(1)).min(1),
+  decisions_already_made: z.array(z.string().min(1)),
+  concrete_next_action: z.string().min(1),
+});
+
+export const BlueprintDocumentSchema = z.object({
+  source_snapshot_id: z.string().uuid(),
+  title: z.literal("Estate Blueprint"),
+  report_type: z.literal("Estate Planning Report"),
+  subtitle: z.string().min(1),
+  organization_name: z.literal("Estate Coordinator"),
+  prepared_by: z.literal("Estate Coordinator"),
+  version_status: z.literal("Principal-confirmed target-state design"),
+  date: z.string().min(1),
+  confidentiality_line: z.string().min(1),
+  advice_boundary: z.string().min(1),
+  estate_team: z.array(EstateTeamMemberSchema),
+  sections: z.tuple([
+    BlueprintAtAGlanceSectionSchema,
+    BlueprintPlanWorksSectionSchema,
+    BlueprintConfirmationsSectionSchema,
+    BlueprintNextStepsSectionSchema,
+  ]),
+});
+export type BlueprintDocument = z.infer<typeof BlueprintDocumentSchema>;
 
 const QuestionInteractionSchema = z.object({
   kind: z.literal("question"),
@@ -210,12 +361,30 @@ const CompleteInteractionSchema = z.object({
   message: z.string().min(1),
 });
 
+const FinalReviewInteractionSchema = z.object({
+  kind: z.literal("final_review"),
+  profile: FinalReviewProfileSchema,
+});
+
+const GeneratingInteractionSchema = z.object({
+  kind: z.literal("generating"),
+  blueprint_id: z.string().uuid(),
+});
+
+const BlueprintPreviewInteractionSchema = z.object({
+  kind: z.literal("blueprint"),
+  blueprint_id: z.string().uuid(),
+});
+
 export const BlueprintInteractionSchema = z.discriminatedUnion("kind", [
   QuestionInteractionSchema,
   EvidenceInteractionSchema,
   RecommendationInteractionSchema,
   StopInteractionSchema,
   CompleteInteractionSchema,
+  FinalReviewInteractionSchema,
+  GeneratingInteractionSchema,
+  BlueprintPreviewInteractionSchema,
 ]);
 export type BlueprintInteraction = z.infer<typeof BlueprintInteractionSchema>;
 
@@ -223,12 +392,22 @@ export const BlueprintStateSchema = z.object({
   workflow_version: z.literal(BLUEPRINT_WORKFLOW_VERSION),
   phase: BlueprintPhaseSchema,
   current_gate: BlueprintGateSchema,
-  completed_gates: z.array(z.number().int().min(1).max(5)),
+  completed_gates: z.array(z.number().int().min(1).max(7)),
   planning_baseline: PlanningBaselineSchema,
   planning_synthesis: PlanningSynthesisSchema.nullable(),
   evidence: EvidenceStateSchema,
   beneficiary_outcomes: BeneficiaryOutcomesSchema,
   fiduciary_continuity_outcomes: FiduciaryContinuityOutcomesSchema,
+  source_context: BlueprintSourceContextSchema.default({
+    goals_and_priorities: [],
+    definition_of_success: null,
+    current_plan_context: null,
+    complexity_flags: [],
+    estate_team: [],
+  }),
+  final_review_profile: FinalReviewProfileSchema.nullable().default(null),
+  final_review_corrections: z.array(FinalReviewCorrectionSchema).default([]),
+  generation_snapshot_id: z.string().uuid().nullable().default(null),
   stop: BlueprintStopSchema.nullable().optional(),
   generated_responses: z.array(GeneratedResponseMetadataSchema).optional(),
   interaction: BlueprintInteractionSchema.nullable(),
@@ -291,6 +470,36 @@ function answered(value: string | null) {
 function joinKnown(values: string[]) {
   const filtered = values.filter((value) => known(value));
   return filtered.length ? filtered.join("; ") : null;
+}
+
+function humanize(value: string) {
+  return value
+    .split("_")
+    .map((part) => `${part.slice(0, 1).toUpperCase()}${part.slice(1)}`)
+    .join(" ");
+}
+
+function estateTeam(record: MatterOpeningRecord): EstateTeamMember[] {
+  const professionals = record.professional_and_family_contacts.map(
+    (contact) => ({
+      name: contact.name,
+      firm_or_relationship: contact.firm || "Professional adviser",
+      role: contact.estate_role || contact.expertise || "Estate team member",
+      contact:
+        [contact.email, contact.telephone].filter(Boolean).join(" / ") ||
+        "Missing",
+    }),
+  );
+  const participants = record.other_participants.map((participant) => ({
+    name: participant.name,
+    firm_or_relationship: participant.relationship || "Family participant",
+    role: participant.intended_role || "Planning participant",
+    contact: "Missing",
+  }));
+  return EstateTeamMemberSchema.array().parse([
+    ...professionals,
+    ...participants,
+  ]);
 }
 
 function priorityDetail(record: MatterOpeningRecord, outcomes: string[]) {
@@ -518,6 +727,16 @@ export function createInitialBlueprintState(
       beneficiary_readiness: readiness,
       ...seed.fiduciaryContinuityOutcomes,
     },
+    source_context: {
+      goals_and_priorities: record.top_three_priorities.map(humanize),
+      definition_of_success: record.principal_definition_of_success,
+      current_plan_context: record.current_plan_snapshot,
+      complexity_flags: record.geographic_and_complexity_flags,
+      estate_team: estateTeam(record),
+    },
+    final_review_profile: null,
+    final_review_corrections: [],
+    generation_snapshot_id: null,
     stop: null,
     generated_responses: [],
     interaction: null,
@@ -591,6 +810,12 @@ function recommendationDecisionId(domain: RecommendationDomain) {
       return "BR-005-SPECIAL-ASSET";
     case "readiness":
       return "BR-005-READINESS";
+    case "tax_transfer_strategy":
+      return "BR-006-TAX-TRANSFER";
+    case "administration_liquidity":
+      return "BR-006-ADMINISTRATION-LIQUIDITY";
+    case "asset_transfer_strategy":
+      return "BR-006-ASSET-TRANSFER";
   }
 }
 
@@ -655,6 +880,156 @@ function unresolvedStage5RecommendationDomains(
   return applicable.filter(
     (domain) => !resolvedIds.has(recommendationDecisionId(domain)),
   );
+}
+
+function unresolvedStage6RecommendationDomains(
+  state: BlueprintState,
+  decisions: DecisionRecord[],
+): RecommendationDomain[] {
+  const resolvedIds = new Set(decisions.map((decision) => decision.decision_id));
+  const priorities = state.source_context.goals_and_priorities.join(" ");
+  const assetContext = [
+    state.planning_baseline.material_assets_range,
+    state.planning_baseline.expected_inheritance_range,
+    ...state.source_context.complexity_flags,
+  ]
+    .filter((value): value is string => Boolean(value))
+    .join(" ");
+  const applicable: RecommendationDomain[] = [];
+
+  if (
+    /tax|minimi[sz]|million|billion|inherit|transfer/i.test(
+      `${priorities} ${assetContext}`,
+    )
+  ) {
+    applicable.push("tax_transfer_strategy");
+  }
+  if (
+    state.source_context.current_plan_context ||
+    /(real estate|property|home|business|private|illiquid|insurance)/i.test(
+      assetContext,
+    )
+  ) {
+    applicable.push("administration_liquidity");
+  }
+
+  const stage5SpecialAssetResolved = resolvedIds.has(
+    recommendationDecisionId("special_asset"),
+  );
+  if (
+    !stage5SpecialAssetResolved &&
+    /(real estate|business|private|digital|charit|retirement|insurance)/i.test(
+      assetContext,
+    )
+  ) {
+    applicable.push("asset_transfer_strategy");
+  }
+
+  return applicable.filter(
+    (domain) => !resolvedIds.has(recommendationDecisionId(domain)),
+  );
+}
+
+function decisionDirection(
+  decisions: DecisionRecord[],
+  domains: RecommendationDomain[],
+  fallback: string,
+) {
+  const selected = decisions.filter((decision) =>
+    domains.includes(decision.domain),
+  );
+  if (!selected.length) return fallback;
+  return selected
+    .map((decision) => {
+      if (decision.principal_response === "modify" && decision.modification) {
+        return decision.modification;
+      }
+      if (
+        decision.principal_response === "alternative_requested" ||
+        decision.principal_response === "defer" ||
+        decision.principal_response === "reject"
+      ) {
+        return `${decision.recommendation} The principal recorded the direction as ${humanize(
+          decision.principal_response,
+        ).toLowerCase()}.`;
+      }
+      return decision.recommendation;
+    })
+    .join(" ");
+}
+
+function uniqueNonempty(values: Array<string | null | undefined>) {
+  return [
+    ...new Set(
+      values
+        .map((value) => value?.trim())
+        .filter((value): value is string => Boolean(value)),
+    ),
+  ];
+}
+
+export function buildFinalReviewProfile(
+  state: BlueprintState,
+  decisions: DecisionRecord[],
+): FinalReviewProfile {
+  const synthesis = state.planning_synthesis;
+  if (!synthesis) {
+    throw new Error("The planning synthesis is required for Final Review.");
+  }
+  const goals = uniqueNonempty([
+    ...state.source_context.goals_and_priorities,
+    state.source_context.definition_of_success,
+  ]).join("; ");
+  const openConfirmations = uniqueNonempty([
+    ...synthesis.confirmation_dependencies,
+    state.evidence.confirmation_dependency,
+    ...decisions.map((decision) => decision.open_confirmation),
+    ...decisions
+      .filter((decision) =>
+        ["alternative_requested", "defer", "reject"].includes(
+          decision.principal_response,
+        ),
+      )
+      .map(
+        (decision) =>
+          `${decision.objective ?? humanize(decision.domain)} remains open because the principal recorded ${humanize(
+            decision.principal_response,
+          ).toLowerCase()}.`,
+      ),
+  ]);
+
+  return FinalReviewProfileSchema.parse({
+    goals_and_priorities:
+      goals || "Preserve the confirmed planning direction and family outcomes.",
+    planning_baseline: `${synthesis.current_and_projected_estate_range} ${synthesis.lifetime_security_boundary}`,
+    beneficiary_architecture: decisionDirection(
+      decisions,
+      ["beneficiary"],
+      "Beneficiary architecture remains subject to the confirmed beneficiary outcomes and professional drafting.",
+    ),
+    fiduciary_and_continuity_design: decisionDirection(
+      decisions,
+      ["fiduciary_continuity", "special_asset"],
+      "Fiduciary and continuity design remains subject to confirmed appointments and professional drafting.",
+    ),
+    tax_and_transfer_direction: decisionDirection(
+      decisions,
+      ["tax_transfer_strategy"],
+      "No separate tax or lifetime-transfer recommendation is materially required beyond professional confirmation of the planning baseline.",
+    ),
+    asset_and_liquidity_treatment: decisionDirection(
+      decisions,
+      ["administration_liquidity", "asset_transfer_strategy"],
+      synthesis.liquidity_and_concentration_considerations,
+    ),
+    family_readiness_design: decisionDirection(
+      decisions,
+      ["readiness"],
+      state.beneficiary_outcomes.stewardship_objectives ??
+        "Readiness expectations remain tied to the confirmed beneficiary outcomes.",
+    ),
+    material_open_confirmations: openConfirmations,
+  });
 }
 
 export function evaluateBlueprint(
@@ -828,62 +1203,107 @@ export function evaluateBlueprint(
       return { state: { ...state, interaction: null }, recommendationNeeded: "beneficiary" };
     }
 
-    if (!fiduciaryContinuitySufficient(state.fiduciary_continuity_outcomes)) {
-      const missing = missingLabels(state.fiduciary_continuity_outcomes, {
-        trusted_people_or_institutions: "the people or institutions you trust",
-        backups: "appropriate backups",
-        essential_responsibilities: "responsibilities that must continue without interruption",
-        special_assets_or_purposes: "special assets or purposes needing different treatment",
-        beneficiary_readiness: "what readiness should precede greater participation or authority",
-      });
-      return {
-        state: {
-          ...state,
-          phase: "BLUEPRINT_DECISIONS",
-          interaction: question(
-            "fiduciary_continuity_outcomes",
-            `In one answer, tell us what matters about ${missing.join(
-              ", ",
-            )}.`,
-            "One narrative answer can cover several of these points. Detailed role assignments and contact verification are not needed.",
-          ),
-        },
-        recommendationNeeded: null,
-      };
-    }
-
-    if (state.interaction?.kind === "recommendation") {
-      const activeDecisionId = state.interaction.decision_id;
-      const stillPending = unresolvedStage5RecommendationDomains(state, decisions).some(
-        (domain) =>
-          recommendationDecisionId(domain) === activeDecisionId,
-      );
-      if (stillPending) return { state, recommendationNeeded: null };
-    }
-
-    const [nextRecommendation] = unresolvedStage5RecommendationDomains(
-      state,
-      decisions,
-    );
-    if (!nextRecommendation) {
-      return {
-        state: {
-          ...state,
-          completed_gates: [...new Set([...state.completed_gates, 5])],
-          interaction: {
-            kind: "complete",
-            title: "Your Blueprint decisions are saved",
-            message:
-              "Your beneficiary, fiduciary, and continuity direction is recorded and ready to carry forward.",
+    if (state.current_gate === 5) {
+      if (!fiduciaryContinuitySufficient(state.fiduciary_continuity_outcomes)) {
+        const missing = missingLabels(state.fiduciary_continuity_outcomes, {
+          trusted_people_or_institutions: "the people or institutions you trust",
+          backups: "appropriate backups",
+          essential_responsibilities: "responsibilities that must continue without interruption",
+          special_assets_or_purposes: "special assets or purposes needing different treatment",
+          beneficiary_readiness: "what readiness should precede greater participation or authority",
+        });
+        return {
+          state: {
+            ...state,
+            phase: "BLUEPRINT_DECISIONS",
+            interaction: question(
+              "fiduciary_continuity_outcomes",
+              `In one answer, tell us what matters about ${missing.join(
+                ", ",
+              )}.`,
+              "One narrative answer can cover several of these points. Detailed role assignments and contact verification are not needed.",
+            ),
           },
+          recommendationNeeded: null,
+        };
+      }
+
+      if (state.interaction?.kind === "recommendation") {
+        const activeDecisionId = state.interaction.decision_id;
+        const stillPending = unresolvedStage5RecommendationDomains(
+          state,
+          decisions,
+        ).some(
+          (domain) => recommendationDecisionId(domain) === activeDecisionId,
+        );
+        if (stillPending) return { state, recommendationNeeded: null };
+      }
+
+      const [nextRecommendation] = unresolvedStage5RecommendationDomains(
+        state,
+        decisions,
+      );
+      if (nextRecommendation) {
+        return {
+          state: { ...state, interaction: null },
+          recommendationNeeded: nextRecommendation,
+        };
+      }
+      state = {
+        ...state,
+        current_gate: 6,
+        completed_gates: [...new Set([...state.completed_gates, 5])],
+        interaction: null,
+      };
+      continue;
+    }
+
+    if (state.current_gate === 6) {
+      if (state.interaction?.kind === "recommendation") {
+        const activeDecisionId = state.interaction.decision_id;
+        const stillPending = unresolvedStage6RecommendationDomains(
+          state,
+          decisions,
+        ).some(
+          (domain) => recommendationDecisionId(domain) === activeDecisionId,
+        );
+        if (stillPending) return { state, recommendationNeeded: null };
+      }
+      const [nextRecommendation] = unresolvedStage6RecommendationDomains(
+        state,
+        decisions,
+      );
+      if (nextRecommendation) {
+        return {
+          state: { ...state, interaction: null },
+          recommendationNeeded: nextRecommendation,
+        };
+      }
+      const profile = buildFinalReviewProfile(state, decisions);
+      state = {
+        ...state,
+        current_gate: 7,
+        phase: "FINAL_REVIEW",
+        completed_gates: [...new Set([...state.completed_gates, 6])],
+        final_review_profile: profile,
+        interaction: { kind: "final_review", profile },
+      };
+      continue;
+    }
+
+    if (state.current_gate === 7) {
+      if (state.generation_snapshot_id) return { state, recommendationNeeded: null };
+      const profile = state.final_review_profile ?? buildFinalReviewProfile(state, decisions);
+      return {
+        state: {
+          ...state,
+          phase: "FINAL_REVIEW",
+          final_review_profile: profile,
+          interaction: { kind: "final_review", profile },
         },
         recommendationNeeded: null,
       };
     }
-    return {
-      state: { ...state, interaction: null },
-      recommendationNeeded: nextRecommendation,
-    };
   }
 }
 
@@ -1034,22 +1454,37 @@ export function buildDecisionRecord(
   if (response.outcome !== "accepted" || !response.disposition) {
     throw new Error("A recommendation response requires a disposition.");
   }
+  const implementationEvidence = (() => {
+    switch (state.interaction.domain) {
+      case "beneficiary":
+        return "Confirm final beneficiary provisions in executed documents.";
+      case "fiduciary_continuity":
+        return "Confirm fiduciary appointments, acceptance, successor provisions, and continuity responsibilities in executed documents and operating records.";
+      case "special_asset":
+        return "Confirm the approved special-asset treatment in governing documents and applicable operating records.";
+      case "readiness":
+        return "Confirm the approved readiness progression in governing documents and family-readiness records.";
+      case "tax_transfer_strategy":
+        return "Confirm professional modeling, valuation, tax assumptions, liquidity, and approved transfer terms before implementation.";
+      case "administration_liquidity":
+        return "Confirm ownership, beneficiary designations, administrative transfer paths, and available estate liquidity.";
+      case "asset_transfer_strategy":
+        return "Confirm asset-specific ownership, transfer restrictions, valuation, liquidity, and professional implementation requirements.";
+    }
+  })();
   return DecisionRecordSchema.parse({
     decision_id: state.interaction.decision_id,
     domain: state.interaction.domain,
+    objective: state.interaction.content.objective,
     recommendation: state.interaction.content.starting_point,
+    rationale: state.interaction.content.rationale,
+    alternative_or_tradeoff:
+      state.interaction.content.alternative_or_tradeoff,
     principal_response: response.disposition,
     modification: response.modification,
     open_confirmation:
       response.open_confirmation ?? state.interaction.content.open_confirmation,
-    implementation_evidence:
-      state.interaction.domain === "beneficiary"
-        ? "Confirm final beneficiary provisions in executed documents."
-        : state.interaction.domain === "fiduciary_continuity"
-          ? "Confirm fiduciary appointments, acceptance, successor provisions, and continuity responsibilities in executed documents and operating records."
-          : state.interaction.domain === "special_asset"
-            ? "Confirm the approved special-asset treatment in governing documents and applicable operating records."
-            : "Confirm the approved readiness progression in governing documents and family-readiness records.",
+    implementation_evidence: implementationEvidence,
     resolved: true,
     recommendation_generation:
       state.interaction.generation_metadata ?? null,
@@ -1120,14 +1555,302 @@ export function applyRecommendationResponse(
   };
 }
 
+export function applyFinalReviewCorrection(
+  state: BlueprintState,
+  input: FinalReviewCorrection,
+): { state: BlueprintState; assistantMessage: string } {
+  if (
+    state.current_gate !== 7 ||
+    state.interaction?.kind !== "final_review" ||
+    !state.final_review_profile
+  ) {
+    throw new Error("Final Review is not active.");
+  }
+  const correction = FinalReviewCorrectionSchema.parse(input);
+  const profile: FinalReviewProfile = {
+    ...state.final_review_profile,
+    [correction.section]:
+      correction.section === "material_open_confirmations"
+        ? correction.replacement
+            .split(/\r?\n|;/)
+            .map((value) => value.trim())
+            .filter(Boolean)
+        : correction.replacement,
+  };
+  const parsedProfile = FinalReviewProfileSchema.parse(profile);
+  return {
+    state: BlueprintStateSchema.parse({
+      ...state,
+      final_review_profile: parsedProfile,
+      final_review_corrections: [
+        ...state.final_review_corrections,
+        correction,
+      ],
+      interaction: { kind: "final_review", profile: parsedProfile },
+      revision: state.revision + 1,
+    }),
+    assistantMessage: correction.acknowledgement,
+  };
+}
+
+export function freezeBlueprintGeneration(
+  state: BlueprintState,
+  decisions: DecisionRecord[],
+  input: {
+    blueprintId: string;
+    matterId: string;
+    clientLabel: string;
+    frozenAt: string;
+  },
+): { state: BlueprintState; generationInput: BlueprintGenerationInput } {
+  if (
+    state.current_gate !== 7 ||
+    state.interaction?.kind !== "final_review" ||
+    !state.final_review_profile ||
+    !state.planning_synthesis
+  ) {
+    throw new Error("A complete Final Review is required before generation.");
+  }
+  if (state.generation_snapshot_id) {
+    throw new Error("The Blueprint generation input is already frozen.");
+  }
+  const generationInput = BlueprintGenerationInputSchema.parse(
+    structuredClone({
+      blueprint_id: input.blueprintId,
+      matter_id: input.matterId,
+      client_label: input.clientLabel,
+      workflow_version: state.workflow_version,
+      frozen_at: input.frozenAt,
+      profile: state.final_review_profile,
+      planning_synthesis: state.planning_synthesis,
+      evidence: state.evidence,
+      decisions,
+      estate_team: state.source_context.estate_team,
+      developed_before_existing_plan_review: true,
+    }),
+  );
+  return {
+    state: BlueprintStateSchema.parse({
+      ...state,
+      phase: "ESTATE_BLUEPRINT",
+      completed_gates: [...new Set([...state.completed_gates, 7])],
+      generation_snapshot_id: input.blueprintId,
+      interaction: {
+        kind: "generating",
+        blueprint_id: input.blueprintId,
+      },
+      revision: state.revision + 1,
+    }),
+    generationInput,
+  };
+}
+
+export function publishBlueprint(
+  state: BlueprintState,
+  blueprintId: string,
+): BlueprintState {
+  if (
+    state.phase !== "ESTATE_BLUEPRINT" ||
+    state.generation_snapshot_id !== blueprintId
+  ) {
+    throw new Error("The frozen Blueprint generation input does not match.");
+  }
+  return BlueprintStateSchema.parse({
+    ...state,
+    interaction: { kind: "blueprint", blueprint_id: blueprintId },
+  });
+}
+
+function domainTitle(domain: RecommendationDomain) {
+  switch (domain) {
+    case "beneficiary":
+      return "Beneficiary structure";
+    case "fiduciary_continuity":
+      return "Fiduciary and continuity structure";
+    case "special_asset":
+      return "Special-asset continuity";
+    case "readiness":
+      return "Family-readiness design";
+    case "tax_transfer_strategy":
+      return "Tax and lifetime-transfer direction";
+    case "administration_liquidity":
+      return "Administration and estate liquidity";
+    case "asset_transfer_strategy":
+      return "Material-asset transfer treatment";
+  }
+}
+
+function confirmationOwner(item: string) {
+  if (/counsel|attorney|legal/i.test(item)) return "Estate-planning counsel";
+  if (/tax|CPA|GST|exemption/i.test(item)) return "CPA or tax adviser";
+  if (/valuation|value/i.test(item)) return "Valuation professional";
+  if (/insurance/i.test(item)) return "Insurance adviser";
+  if (/investment|liquidity|concentration/i.test(item)) {
+    return "Investment or financial adviser";
+  }
+  return "Principal and appropriate professional";
+}
+
+function asSentence(value: string) {
+  return `${value.trim().replace(/[.!?]+$/, "")}.`;
+}
+
+export function buildBlueprintDocument(
+  input: BlueprintGenerationInput,
+): BlueprintDocument {
+  const generationInput = BlueprintGenerationInputSchema.parse(input);
+  const activeDecisions = generationInput.decisions.filter((decision) =>
+    ["accept", "modify", "confirmation_required"].includes(
+      decision.principal_response,
+    ),
+  );
+  const components = activeDecisions.map((decision) => ({
+    title: domainTitle(decision.domain),
+    what_it_does:
+      decision.principal_response === "modify" && decision.modification
+        ? decision.modification
+        : decision.recommendation,
+    why_it_fits:
+      decision.rationale ??
+      `This direction supports the confirmed priorities: ${generationInput.profile.goals_and_priorities}.`,
+    tradeoff_or_dependency:
+      decision.alternative_or_tradeoff ??
+      decision.open_confirmation ??
+      "The final design and implementation details remain subject to professional confirmation.",
+  }));
+  const confirmations = uniqueNonempty([
+    ...generationInput.profile.material_open_confirmations,
+    ...generationInput.decisions
+      .filter((decision) =>
+        ["alternative_requested", "defer", "reject"].includes(
+          decision.principal_response,
+        ),
+      )
+      .map(
+        (decision) =>
+          `${decision.objective ?? domainTitle(decision.domain)} remains unresolved.`,
+      ),
+  ]).map((item) => ({
+    question: item,
+    why_it_matters:
+      "This could affect final drafting, tax treatment, valuation, liquidity, or implementation.",
+    owner: confirmationOwner(item),
+  }));
+  const date = new Intl.DateTimeFormat("en-US", {
+    year: "numeric",
+    month: "long",
+    day: "numeric",
+    timeZone: "UTC",
+  }).format(new Date(generationInput.frozen_at));
+
+  return BlueprintDocumentSchema.parse({
+    source_snapshot_id: generationInput.blueprint_id,
+    title: "Estate Blueprint",
+    report_type: "Estate Planning Report",
+    subtitle: `Target-State Design for ${generationInput.client_label}`,
+    organization_name: "Estate Coordinator",
+    prepared_by: "Estate Coordinator",
+    version_status: "Principal-confirmed target-state design",
+    date,
+    confidentiality_line: `Confidential. ${generationInput.client_label}.`,
+    advice_boundary:
+      "This Estate Blueprint organizes planning direction. It is not legal, tax, valuation, GST, or other professional advice.",
+    estate_team: generationInput.estate_team,
+    sections: [
+      {
+        key: "at_a_glance",
+        title: "Your Estate Blueprint - At a Glance",
+        overview: [
+          `Your Blueprint is organized around these priorities: ${asSentence(generationInput.profile.goals_and_priorities)}`,
+          `The recommended target state combines ${generationInput.profile.beneficiary_architecture} ${generationInput.profile.fiduciary_and_continuity_design}`,
+        ],
+        objectives: uniqueNonempty(
+          generationInput.profile.goals_and_priorities.split(";"),
+        ),
+        governing_constraints: [
+          generationInput.profile.planning_baseline,
+          generationInput.profile.asset_and_liquidity_treatment,
+        ],
+        planning_baseline: [
+          {
+            label: "Principal-confirmed planning baseline",
+            value: generationInput.profile.planning_baseline,
+          },
+          {
+            label: "Current and projected estate range",
+            value:
+              generationInput.planning_synthesis
+                .current_and_projected_estate_range,
+          },
+          {
+            label: "Transfer-planning direction",
+            value: generationInput.profile.tax_and_transfer_direction,
+          },
+        ],
+        schematic: {
+          nodes: [
+            "Your planning base and lifetime-security boundary",
+            "Protected beneficiary structure",
+            "Fiduciary, continuity, and liquidity support",
+            "Professional drafting and implementation",
+          ],
+          flows: [
+            "Confirmed priorities guide the target-state structure",
+            "Professional confirmation converts the Blueprint into final implementation",
+          ],
+        },
+      },
+      {
+        key: "plan_works",
+        title: "How Your Plan Works",
+        components,
+        operating_detail_note:
+          "Detailed continuity instructions, family action guides, digital recovery procedures, and asset-level operating records should be maintained separately from this Blueprint.",
+      },
+      {
+        key: "confirmations",
+        title: "What Still Needs to Be Confirmed",
+        items: confirmations,
+        approval_boundary:
+          "Principal approval confirms that this Blueprint is understandable and accurately reflects the intended planning direction. It does not verify legal, tax, valuation, GST, or other professional conclusions.",
+        existing_plan_boundary:
+          "This Blueprint was developed before review of your existing estate-planning documents.",
+      },
+      {
+        key: "next_steps",
+        title: "What Happens Next",
+        steps: [
+          "Confirm the material open assumptions with the named professionals.",
+          "Compare the existing estate plan with this frozen target state.",
+          "Have counsel and tax professionals finalize the design.",
+          "Implement approved ownership, beneficiary, fiduciary, tax, funding, and liquidity actions.",
+          "Verify implementation evidence and maintain the separate operating records.",
+        ],
+        decisions_already_made: activeDecisions.map(
+          (decision) =>
+            decision.modification ?? decision.recommendation,
+        ),
+        concrete_next_action:
+          "Schedule one working session with estate-planning counsel to confirm the open items and compare the existing plan with this Blueprint.",
+      },
+    ],
+  });
+}
+
 export function phaseLabel(phase: BlueprintPhase) {
-  return phase === "PLANNING_FOUNDATION"
-    ? "Planning Foundation"
-    : "Blueprint Decisions";
+  if (phase === "PLANNING_FOUNDATION") return "Planning Foundation";
+  if (phase === "BLUEPRINT_DECISIONS") return "Blueprint Decisions";
+  if (phase === "FINAL_REVIEW") return "Final Review";
+  return "Your Estate Blueprint";
 }
 
 export function phaseProgress(phase: BlueprintPhase) {
-  return phase === "PLANNING_FOUNDATION"
-    ? USER_JOURNEY_PROGRESS.planningFoundation
-    : USER_JOURNEY_PROGRESS.blueprintDecisions;
+  if (phase === "PLANNING_FOUNDATION") {
+    return USER_JOURNEY_PROGRESS.planningFoundation;
+  }
+  if (phase === "BLUEPRINT_DECISIONS") {
+    return USER_JOURNEY_PROGRESS.blueprintDecisions;
+  }
+  if (phase === "FINAL_REVIEW") return USER_JOURNEY_PROGRESS.finalReview;
+  return USER_JOURNEY_PROGRESS.estateBlueprint;
 }

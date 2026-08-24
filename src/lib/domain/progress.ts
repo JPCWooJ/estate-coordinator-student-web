@@ -17,4 +17,6 @@ export const USER_JOURNEY_PROGRESS = {
   planningSummary: 50,
   planningFoundation: 55,
   blueprintDecisions: 75,
+  finalReview: 90,
+  estateBlueprint: 100,
 } as const;

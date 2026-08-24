@@ -4,6 +4,8 @@ import {
   BlueprintAnswerInterpretation,
   BlueprintState,
   EvidenceTreatment,
+  FinalReviewCorrection,
+  FinalReviewProfile,
   RecommendationContent,
   RecommendationDomain,
   RecommendationResponse,
@@ -15,6 +17,26 @@ import {
   PlanningSummaryCorrection,
   WorkflowState,
 } from "@/lib/domain/matter-opening";
+
+export function interpretSyntheticFinalReviewCorrection(input: {
+  correction: string;
+  profile: FinalReviewProfile;
+}): FinalReviewCorrection {
+  if (input.correction === "Change the lifetime-security floor to $6 million.") {
+    return {
+      section: "planning_baseline",
+      replacement: "Preserve $6 million.",
+      acknowledgement: "The planning baseline now preserves $6 million.",
+    };
+  }
+
+  return {
+    section: "goals_and_priorities",
+    replacement: input.profile.goals_and_priorities,
+    acknowledgement:
+      "I could not identify a supported local change, so the Final Review remains unchanged.",
+  };
+}
 
 const OUTCOMES_ANSWER =
   "My top priorities are intended transfer, incapacity readiness, and tax minimization; keep things practical and simple.";
@@ -359,6 +381,53 @@ export function generateSyntheticRecommendation(input: {
         "Counsel should confirm how the readiness standard and decision authority are expressed in the final documents.",
       response_question:
         "Does this readiness progression fit the responsibility you want beneficiaries to assume?",
+    };
+  }
+  if (input.domain === "tax_transfer_strategy") {
+    return {
+      objective:
+        "Preserve lifetime security while evaluating tax and transfer opportunities",
+      starting_point:
+        "We recommend modeling transfers only for value above the confirmed lifetime-security and retained-control boundaries, with retaining the assets modeled as the comparison case.",
+      rationale:
+        "This keeps tax planning subordinate to lifetime security while showing the tax, basis, control, liquidity, cost, administration, and downside tradeoffs of transferring versus retaining material assets.",
+      alternative_or_tradeoff:
+        "Retaining assets preserves control and may preserve tax benefits; transferring can reduce future estate exposure but adds cost, complexity, and liquidity demands.",
+      open_confirmation:
+        "Tax advisers, estate-planning counsel, and valuation professionals must confirm current law, values, transfer capacity, and implementation terms.",
+      response_question:
+        "Does this tax and transfer-planning direction fit your priorities?",
+    };
+  }
+  if (input.domain === "administration_liquidity") {
+    return {
+      objective:
+        "Reduce avoidable administration while preserving estate liquidity",
+      starting_point:
+        "We recommend using the revocable plan as the administrative hub, coordinating ownership and beneficiary designations with it, and confirming a practical source of estate liquidity.",
+      rationale:
+        "This can reduce avoidable probate and transfer friction while preserving estate liquidity and flexibility for the home, business, and other potentially illiquid assets.",
+      alternative_or_tradeoff:
+        "More lifetime restructuring may reduce later administration, but it adds current cost, complexity, and professional maintenance.",
+      open_confirmation:
+        "Counsel and financial advisers should confirm ownership, beneficiary designations, administrative transfer paths, and available liquidity.",
+      response_question:
+        "Does this administrative and liquidity direction fit your objectives?",
+    };
+  }
+  if (input.domain === "asset_transfer_strategy") {
+    return {
+      objective: "Coordinate material assets with the broader transfer plan",
+      starting_point:
+        "We recommend confirming separate ownership, transfer, valuation, liquidity, and succession treatment for each materially distinct asset before implementation.",
+      rationale:
+        "A general estate structure should not override asset-specific restrictions or operating requirements.",
+      alternative_or_tradeoff:
+        "Uniform treatment is simpler, but it can create avoidable control, liquidity, or administration problems for specialized assets.",
+      open_confirmation:
+        "Counsel and the relevant asset advisers should confirm the asset-specific implementation requirements.",
+      response_question:
+        "Does this asset-specific transfer direction fit the assets you identified?",
     };
   }
   return {

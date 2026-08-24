@@ -3,19 +3,27 @@ import "server-only";
 import { randomUUID } from "node:crypto";
 
 import {
+  applyFinalReviewCorrection,
   applyBlueprintAnswer,
   applyEvidenceTreatment,
   applyRecommendationResponse,
   BlueprintState,
   BlueprintStateSchema,
+  BlueprintDocument,
+  BlueprintDocumentSchema,
+  BlueprintGenerationInput,
+  BlueprintGenerationInputSchema,
+  buildBlueprintDocument,
   createInitialBlueprintState,
   DecisionRecord,
   DecisionRecordSchema,
   evaluateBlueprint,
   EvidenceTreatment,
+  freezeBlueprintGeneration,
   phaseLabel,
   phaseProgress,
   PlanningBaseline,
+  publishBlueprint,
   presentRecommendation,
 } from "@/lib/domain/blueprint";
 import {
@@ -44,18 +52,30 @@ import {
   generateBlueprintRecommendation,
   interpretBlueprintAnswer,
   interpretBlueprintEvidence,
+  interpretFinalReviewCorrection,
   interpretMatterOpeningAnswer,
   interpretPlanningSummaryCorrection,
   interpretRecommendationResponse,
 } from "./interpreter";
 import { extractStageRelevantEvidence } from "./evidence";
 import { createAdminSupabaseClient } from "./supabase";
+import { renderBlueprintPdf } from "./blueprint-pdf";
 
 type MatterStatus =
   | "matter_opening"
   | "stopped"
   | "blueprint_ready"
-  | "blueprint_in_progress";
+  | "blueprint_in_progress"
+  | "blueprint_complete";
+
+export type BlueprintArtifact = {
+  id: string;
+  status: "generating" | "ready";
+  document: BlueprintDocument | null;
+  frozenAt: string;
+  generatedAt: string | null;
+  downloadFilename: string;
+};
 
 export type MatterSummary = {
   id: string;
@@ -84,6 +104,13 @@ export type MatterView = MatterSummary & {
   savedAt: string;
   blueprintState: BlueprintState | null;
   decisions: DecisionRecord[];
+  blueprint: BlueprintArtifact | null;
+};
+
+type StoredBlueprintArtifact = BlueprintArtifact & {
+  generationInput: BlueprintGenerationInput;
+  pdfStoragePath: string | null;
+  pdfBytes: Uint8Array | null;
 };
 
 type SyntheticMatter = {
@@ -106,6 +133,7 @@ type SyntheticMatter = {
     status: string;
   }>;
   blueprintSeed: Parameters<typeof createInitialBlueprintState>[1] | null;
+  blueprint: StoredBlueprintArtifact | null;
 };
 
 const syntheticProfiles = new Set<string>();
@@ -121,6 +149,33 @@ function parseState(value: unknown) {
 
 function parseBlueprintState(value: unknown) {
   return BlueprintStateSchema.parse(value);
+}
+
+function parseBlueprintArtifact(value: {
+  id: string;
+  status: string;
+  document: unknown;
+  frozen_at: string;
+  generated_at: string | null;
+  download_filename: string;
+}): BlueprintArtifact {
+  if (value.status !== "generating" && value.status !== "ready") {
+    throw new Error("The Estate Blueprint has an invalid generation status.");
+  }
+  const document = value.document
+    ? BlueprintDocumentSchema.parse(value.document)
+    : null;
+  if (value.status === "ready" && !document) {
+    throw new Error("The completed Estate Blueprint document is missing.");
+  }
+  return {
+    id: value.id,
+    status: value.status,
+    document,
+    frozenAt: value.frozen_at,
+    generatedAt: value.generated_at,
+    downloadFilename: value.download_filename,
+  };
 }
 
 function summary(input: {
@@ -174,6 +229,16 @@ function syntheticView(matter: SyntheticMatter): MatterView {
     savedAt: matter.updatedAt,
     blueprintState: matter.blueprintState,
     decisions: matter.decisions,
+    blueprint: matter.blueprint
+      ? {
+          id: matter.blueprint.id,
+          status: matter.blueprint.status,
+          document: matter.blueprint.document,
+          frozenAt: matter.blueprint.frozenAt,
+          generatedAt: matter.blueprint.generatedAt,
+          downloadFilename: matter.blueprint.downloadFilename,
+        }
+      : null,
   };
 }
 
@@ -251,6 +316,7 @@ export async function createMatter(userId: string) {
       decisions: [],
       evidence: [],
       blueprintSeed: null,
+      blueprint: null,
     });
     return id;
   }
@@ -345,6 +411,7 @@ export async function getMatter(
     messageResult,
     blueprintResult,
     decisionResult,
+    artifactResult,
   ] = await Promise.all([
     supabase
       .from("matters")
@@ -376,12 +443,19 @@ export async function getMatter(
       .eq("matter_id", matterId)
       .eq("owner_id", userId)
       .order("created_at", { ascending: true }),
+    supabase
+      .from("estate_blueprints")
+      .select("id,status,document,frozen_at,generated_at,download_filename")
+      .eq("matter_id", matterId)
+      .eq("owner_id", userId)
+      .maybeSingle(),
   ]);
   if (matterResult.error) throw matterResult.error;
   if (openingResult.error) throw openingResult.error;
   if (messageResult.error) throw messageResult.error;
   if (blueprintResult.error) throw blueprintResult.error;
   if (decisionResult.error) throw decisionResult.error;
+  if (artifactResult.error) throw artifactResult.error;
   if (!matterResult.data || !openingResult.data) return null;
 
   const state = parseState(openingResult.data.workflow_state);
@@ -415,6 +489,9 @@ export async function getMatter(
     savedAt: blueprintResult.data?.updated_at ?? openingResult.data.updated_at,
     blueprintState,
     decisions,
+    blueprint: artifactResult.data
+      ? parseBlueprintArtifact(artifactResult.data)
+      : null,
   };
 }
 
@@ -923,6 +1000,266 @@ export async function submitBlueprintEvidence(input: {
   return updated;
 }
 
+export async function correctFinalReview(input: {
+  userId: string;
+  matterId: string;
+  turnKey: string;
+  correction: string;
+}) {
+  const acceptedRetry = await getAcceptedBlueprintRetry(
+    input.userId,
+    input.matterId,
+    input.turnKey,
+  );
+  if (acceptedRetry) return acceptedRetry;
+
+  const matter = await getMatter(input.userId, input.matterId);
+  if (
+    !matter?.blueprintState ||
+    matter.blueprintState.interaction?.kind !== "final_review" ||
+    !matter.blueprintState.final_review_profile
+  ) {
+    throw new Error("Final Review is not active.");
+  }
+  const expectedState = matter.blueprintState;
+  const finalReviewProfile = expectedState.final_review_profile;
+  if (!finalReviewProfile) throw new Error("Final Review is not active.");
+  const interpreted = await interpretFinalReviewCorrection({
+    correction: input.correction,
+    profile: finalReviewProfile,
+  });
+  const stateWithGeneration = appendGeneratedResponse(
+    expectedState,
+    generatedResponseMetadata(interpreted),
+  );
+  const applied = applyFinalReviewCorrection(stateWithGeneration, interpreted);
+
+  if (syntheticModeEnabled()) {
+    const synthetic = requireSyntheticMatter(input.userId, input.matterId);
+    synthetic.blueprintState = applied.state;
+    appendSyntheticMessage(
+      synthetic,
+      "student",
+      "BLUEPRINT_7_FINAL_REVIEW",
+      input.correction,
+    );
+    appendSyntheticMessage(
+      synthetic,
+      "assistant",
+      "BLUEPRINT_7_FINAL_REVIEW",
+      applied.assistantMessage,
+    );
+    synthetic.processedTurnKeys.add(input.turnKey);
+    synthetic.updatedAt = new Date().toISOString();
+    return syntheticView(synthetic);
+  }
+
+  const supabase = createAdminSupabaseClient();
+  const { error } = await supabase.rpc("apply_final_review_correction", {
+    p_matter_id: input.matterId,
+    p_owner_id: input.userId,
+    p_turn_key: input.turnKey,
+    p_expected_state: expectedState,
+    p_student_message: input.correction,
+    p_assistant_message: applied.assistantMessage,
+    p_state: applied.state,
+  });
+  if (error) throw error;
+  const updated = await getMatter(input.userId, input.matterId);
+  if (!updated) throw new Error("Matter not found after Final Review correction.");
+  return updated;
+}
+
+function blueprintDownloadFilename() {
+  return "Estate-Blueprint.pdf";
+}
+
+export async function finalizeBlueprint(input: {
+  userId: string;
+  matterId: string;
+}) {
+  const matter = await getMatter(input.userId, input.matterId);
+  if (!matter?.blueprintState) throw new Error("Matter not found.");
+  if (matter.blueprint?.status === "ready") return matter;
+
+  if (syntheticModeEnabled()) {
+    const synthetic = requireSyntheticMatter(input.userId, input.matterId);
+    let artifact = synthetic.blueprint;
+    if (!artifact) {
+      const blueprintId = randomUUID();
+      const frozenAt = new Date().toISOString();
+      const frozen = freezeBlueprintGeneration(
+        synthetic.blueprintState ?? matter.blueprintState,
+        synthetic.decisions,
+        {
+          blueprintId,
+          matterId: input.matterId,
+          clientLabel: synthetic.name,
+          frozenAt,
+        },
+      );
+      synthetic.blueprintState = frozen.state;
+      artifact = {
+        id: blueprintId,
+        status: "generating",
+        document: buildBlueprintDocument(frozen.generationInput),
+        generationInput: frozen.generationInput,
+        frozenAt,
+        generatedAt: null,
+        downloadFilename: blueprintDownloadFilename(),
+        pdfStoragePath: null,
+        pdfBytes: null,
+      };
+      synthetic.blueprint = artifact;
+    }
+
+    const document = buildBlueprintDocument(artifact.generationInput);
+    const pdfBytes = await renderBlueprintPdf(document);
+    const generatedAt = new Date().toISOString();
+    synthetic.blueprintState = publishBlueprint(
+      synthetic.blueprintState ?? matter.blueprintState,
+      artifact.id,
+    );
+    synthetic.blueprint = {
+      ...artifact,
+      status: "ready",
+      document,
+      pdfBytes,
+      generatedAt,
+    };
+    synthetic.status = "blueprint_complete";
+    synthetic.updatedAt = generatedAt;
+    return syntheticView(synthetic);
+  }
+
+  const supabase = createAdminSupabaseClient();
+  let generationState = matter.blueprintState;
+  let generationInput: BlueprintGenerationInput;
+  let blueprintId: string;
+  let frozenAt: string;
+  const downloadFilename = blueprintDownloadFilename();
+
+  if (!matter.blueprint) {
+    blueprintId = randomUUID();
+    frozenAt = new Date().toISOString();
+    const frozen = freezeBlueprintGeneration(
+      matter.blueprintState,
+      matter.decisions,
+      {
+        blueprintId,
+        matterId: input.matterId,
+        clientLabel: matter.name,
+        frozenAt,
+      },
+    );
+    generationState = frozen.state;
+    generationInput = frozen.generationInput;
+    const { error } = await supabase.rpc("freeze_estate_blueprint", {
+      p_matter_id: input.matterId,
+      p_owner_id: input.userId,
+      p_blueprint_id: blueprintId,
+      p_expected_state: matter.blueprintState,
+      p_state: generationState,
+      p_generation_input: generationInput,
+      p_download_filename: downloadFilename,
+      p_frozen_at: frozenAt,
+    });
+    if (error) throw error;
+  } else {
+    blueprintId = matter.blueprint.id;
+    frozenAt = matter.blueprint.frozenAt;
+    const { data, error } = await supabase
+      .from("estate_blueprints")
+      .select("generation_input")
+      .eq("id", blueprintId)
+      .eq("matter_id", input.matterId)
+      .eq("owner_id", input.userId)
+      .maybeSingle();
+    if (error) throw error;
+    if (!data) throw new Error("The frozen Estate Blueprint input is missing.");
+    generationInput = BlueprintGenerationInputSchema.parse(
+      data.generation_input,
+    );
+  }
+
+  const document = buildBlueprintDocument(generationInput);
+  const pdfBytes = await renderBlueprintPdf(document);
+  const storagePath = `${input.userId}/${input.matterId}/${blueprintId}.pdf`;
+  const { error: uploadError } = await supabase.storage
+    .from("estate-blueprints")
+    .upload(storagePath, pdfBytes, {
+      contentType: "application/pdf",
+      upsert: true,
+    });
+  if (uploadError) throw uploadError;
+  const publishedState = publishBlueprint(generationState, blueprintId);
+  const generatedAt = new Date().toISOString();
+  const { error: completeError } = await supabase.rpc(
+    "complete_estate_blueprint",
+    {
+      p_matter_id: input.matterId,
+      p_owner_id: input.userId,
+      p_blueprint_id: blueprintId,
+      p_expected_state: generationState,
+      p_state: publishedState,
+      p_document: document,
+      p_pdf_storage_path: storagePath,
+      p_generated_at: generatedAt,
+    },
+  );
+  if (completeError) throw completeError;
+  const updated = await getMatter(input.userId, input.matterId);
+  if (!updated) throw new Error("Matter not found after Blueprint generation.");
+  return updated;
+}
+
+export async function getBlueprintPdf(input: {
+  userId: string;
+  matterId: string;
+}) {
+  const matter = await getMatter(input.userId, input.matterId);
+  if (!matter) throw new Error("Matter not found.");
+  if (!matter.blueprint || matter.blueprint.status !== "ready") {
+    throw new Error("The Estate Blueprint PDF is not ready.");
+  }
+
+  if (syntheticModeEnabled()) {
+    const artifact = requireSyntheticMatter(
+      input.userId,
+      input.matterId,
+    ).blueprint;
+    if (!artifact?.pdfBytes) {
+      throw new Error("The Estate Blueprint PDF is not ready.");
+    }
+    return {
+      bytes: artifact.pdfBytes,
+      filename: artifact.downloadFilename,
+    };
+  }
+
+  const supabase = createAdminSupabaseClient();
+  const { data, error } = await supabase
+    .from("estate_blueprints")
+    .select("pdf_storage_path,download_filename")
+    .eq("id", matter.blueprint.id)
+    .eq("matter_id", input.matterId)
+    .eq("owner_id", input.userId)
+    .eq("status", "ready")
+    .maybeSingle();
+  if (error) throw error;
+  if (!data?.pdf_storage_path) {
+    throw new Error("The Estate Blueprint PDF is not ready.");
+  }
+  const { data: pdf, error: downloadError } = await supabase.storage
+    .from("estate-blueprints")
+    .download(data.pdf_storage_path);
+  if (downloadError) throw downloadError;
+  return {
+    bytes: new Uint8Array(await pdf.arrayBuffer()),
+    filename: data.download_filename,
+  };
+}
+
 export async function seedSyntheticBlueprintScenario(input: {
   userId: string;
   scenario: "zero_turn" | "incomplete" | "triggered";
@@ -1037,6 +1374,7 @@ export async function seedSyntheticBlueprintScenario(input: {
         special_treatment: "family-business interests need coordinated management",
       },
     },
+    blueprint: null,
   });
   return id;
 }
