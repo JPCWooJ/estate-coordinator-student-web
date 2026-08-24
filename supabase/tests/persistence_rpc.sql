@@ -7,6 +7,9 @@ declare
   v_turn uuid := '44444444-4444-4444-8444-444444444444';
   v_correction_turn uuid := '55555555-5555-4555-8555-555555555555';
   v_blueprint_turn uuid := '66666666-6666-4666-8666-666666666666';
+  v_final_review_turn uuid := '77777777-7777-4777-8777-777777777777';
+  v_blueprint_id uuid := '88888888-8888-4888-8888-888888888888';
+  v_frozen_at timestamptz := '2026-08-23T20:00:00Z';
   v_record jsonb;
   v_corrected_record jsonb;
   v_saved_revision jsonb;
@@ -14,6 +17,8 @@ declare
   v_next_state jsonb;
   v_blueprint_state jsonb;
   v_next_blueprint_state jsonb;
+  v_generation_input jsonb;
+  v_document jsonb;
   v_message_count integer;
   v_revision_count integer;
   v_decision_count integer;
@@ -170,9 +175,105 @@ begin
   if v_decision_count <> 1 or v_blueprint_state <> v_next_blueprint_state then
     raise exception 'Persistence failure: Blueprint decision or resume state was not idempotent';
   end if;
+
+  v_blueprint_state := jsonb_build_object(
+    'workflow_version', 'EC_ESTATE_BLUEPRINT_0.7',
+    'phase', 'FINAL_REVIEW',
+    'current_gate', 7,
+    'revision', 2,
+    'interaction', jsonb_build_object('kind', 'final_review')
+  );
+  update public.blueprint_states
+    set state = v_blueprint_state, revision = 2
+    where matter_id = v_matter;
+  v_next_blueprint_state := v_blueprint_state || jsonb_build_object(
+    'revision', 3,
+    'interaction', jsonb_build_object('kind', 'final_review')
+  );
+
+  perform public.apply_final_review_correction(
+    v_matter, v_owner, v_final_review_turn, v_blueprint_state,
+    'Preserve $6 million.', 'The planning baseline was corrected.',
+    v_next_blueprint_state
+  );
+  perform public.apply_final_review_correction(
+    v_matter, v_owner, v_final_review_turn, v_blueprint_state,
+    'Duplicate correction.', 'Duplicate correction.',
+    v_next_blueprint_state
+  );
+  select count(*) into v_message_count
+    from public.messages
+    where matter_id = v_matter and turn_key = v_final_review_turn;
+  if v_message_count <> 2 then
+    raise exception 'Persistence failure: idempotent Final Review correction wrote % messages', v_message_count;
+  end if;
+
+  v_blueprint_state := v_next_blueprint_state;
+  v_next_blueprint_state := v_blueprint_state || jsonb_build_object(
+    'phase', 'ESTATE_BLUEPRINT',
+    'revision', 4,
+    'generation_snapshot_id', v_blueprint_id,
+    'interaction', jsonb_build_object(
+      'kind', 'generating', 'blueprint_id', v_blueprint_id
+    )
+  );
+  v_generation_input := jsonb_build_object(
+    'blueprint_id', v_blueprint_id,
+    'matter_id', v_matter,
+    'frozen_at', v_frozen_at,
+    'profile', jsonb_build_object('planning_baseline', 'Preserve $6 million.')
+  );
+
+  perform public.freeze_estate_blueprint(
+    v_matter, v_owner, v_blueprint_id, v_blueprint_state,
+    v_next_blueprint_state, v_generation_input,
+    'Estate-Blueprint.pdf', v_frozen_at
+  );
+  perform public.freeze_estate_blueprint(
+    v_matter, v_owner, v_blueprint_id, v_blueprint_state,
+    v_next_blueprint_state, v_generation_input,
+    'Estate-Blueprint.pdf', v_frozen_at
+  );
+
+  v_blueprint_state := v_next_blueprint_state;
+  v_next_blueprint_state := v_blueprint_state || jsonb_build_object(
+    'interaction', jsonb_build_object(
+      'kind', 'blueprint', 'blueprint_id', v_blueprint_id
+    )
+  );
+  v_document := jsonb_build_object(
+    'source_snapshot_id', v_blueprint_id,
+    'title', 'Estate Blueprint'
+  );
+  perform public.complete_estate_blueprint(
+    v_matter, v_owner, v_blueprint_id, v_blueprint_state,
+    v_next_blueprint_state, v_document,
+    v_owner::text || '/' || v_matter::text || '/' || v_blueprint_id::text || '.pdf',
+    '2026-08-23T20:01:00Z'
+  );
+  perform public.complete_estate_blueprint(
+    v_matter, v_owner, v_blueprint_id, v_blueprint_state,
+    v_next_blueprint_state, v_document,
+    v_owner::text || '/' || v_matter::text || '/' || v_blueprint_id::text || '.pdf',
+    '2026-08-23T20:01:00Z'
+  );
+
+  select status into v_status from public.matters where id = v_matter;
+  if v_status <> 'blueprint_complete' or not exists (
+    select 1 from public.estate_blueprints
+    where id = v_blueprint_id
+      and matter_id = v_matter
+      and owner_id = v_owner
+      and status = 'ready'
+      and generation_input = v_generation_input
+      and document = v_document
+      and pdf_storage_path is not null
+  ) then
+    raise exception 'Persistence failure: frozen Estate Blueprint did not complete exactly';
+  end if;
 end;
 $$;
 
-select 'PASS: opening and Blueprint state, correction, decision, confirmation, and idempotency persist' as persistence_result;
+select 'PASS: opening, decisions, Final Review, immutable generation, and Blueprint completion persist' as persistence_result;
 
 rollback;

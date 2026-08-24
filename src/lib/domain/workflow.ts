@@ -7,6 +7,7 @@ import {
   PlanningSummaryCorrection,
   WorkflowState,
 } from "./matter-opening";
+import { USER_JOURNEY_PROGRESS } from "./progress";
 
 const OUTCOME_FOLLOWUP_QUESTIONS: Record<OutcomeCode, string> = {
   intended_transfer:
@@ -53,22 +54,25 @@ const STEP_LABELS: Record<OpeningStep, string> = {
 };
 
 const STEP_PROGRESS: Record<OpeningStep, number> = {
-  MO01_OUTCOMES: 12,
-  MO01_PRIORITIES: 18,
-  MO01_GOAL_FOLLOWUP: 24,
-  MO02_PEOPLE: 34,
-  MO02_CIRCUMSTANCES: 40,
-  MO03_CURRENT_PLAN: 48,
-  MO03_PLAN_DETAILS: 54,
-  MO03_CHANGES: 60,
-  MO04_TIMING: 68,
-  MO05_FOOTPRINT: 76,
-  MO05_COMPLEXITY: 84,
-  MO06_CONTACTS: 90,
-  MO08_HOUSE_IN_ORDER: 94,
-  MO08_CONFIRM: 95,
-  BLUEPRINT_READY: 100,
-  STOPPED: 100,
+  MO01_OUTCOMES: USER_JOURNEY_PROGRESS.estatePlanningPriorities.outcomes,
+  MO01_PRIORITIES: USER_JOURNEY_PROGRESS.estatePlanningPriorities.priorities,
+  MO01_GOAL_FOLLOWUP:
+    USER_JOURNEY_PROGRESS.estatePlanningPriorities.goalFollowup,
+  MO02_PEOPLE: USER_JOURNEY_PROGRESS.estatePlanningPriorities.people,
+  MO02_CIRCUMSTANCES:
+    USER_JOURNEY_PROGRESS.estatePlanningPriorities.circumstances,
+  MO03_CURRENT_PLAN: USER_JOURNEY_PROGRESS.estatePlanningPriorities.currentPlan,
+  MO03_PLAN_DETAILS: USER_JOURNEY_PROGRESS.estatePlanningPriorities.planDetails,
+  MO03_CHANGES: USER_JOURNEY_PROGRESS.estatePlanningPriorities.changes,
+  MO04_TIMING: USER_JOURNEY_PROGRESS.estatePlanningPriorities.timing,
+  MO05_FOOTPRINT: USER_JOURNEY_PROGRESS.estatePlanningPriorities.footprint,
+  MO05_COMPLEXITY: USER_JOURNEY_PROGRESS.estatePlanningPriorities.complexity,
+  MO06_CONTACTS: USER_JOURNEY_PROGRESS.estatePlanningPriorities.contacts,
+  MO08_HOUSE_IN_ORDER:
+    USER_JOURNEY_PROGRESS.estatePlanningPriorities.houseInOrder,
+  MO08_CONFIRM: USER_JOURNEY_PROGRESS.planningSummary,
+  BLUEPRINT_READY: USER_JOURNEY_PROGRESS.planningFoundation,
+  STOPPED: USER_JOURNEY_PROGRESS.estatePlanningPriorities.outcomes,
 };
 
 function nextPriority(record: MatterOpeningRecord) {
@@ -92,6 +96,12 @@ export function getStepLabel(step: OpeningStep) {
 
 export function getProgress(step: OpeningStep) {
   return STEP_PROGRESS[step];
+}
+
+export function getWorkflowProgress(state: WorkflowState) {
+  return state.step === "STOPPED"
+    ? (state.progressBeforeStop ?? STEP_PROGRESS.STOPPED)
+    : STEP_PROGRESS[state.step];
 }
 
 export function getCanonicalQuestion(
@@ -267,7 +277,11 @@ function applyStepPatch(
   }
 }
 
-function nextStep(record: MatterOpeningRecord, step: OpeningStep): OpeningStep {
+function nextStep(
+  record: MatterOpeningRecord,
+  step: OpeningStep,
+  patch: InterpretationPatch,
+): OpeningStep {
   switch (step) {
     case "MO01_OUTCOMES":
       return record.top_three_priorities.length === 3
@@ -277,10 +291,12 @@ function nextStep(record: MatterOpeningRecord, step: OpeningStep): OpeningStep {
       return nextPriority(record) ? "MO01_GOAL_FOLLOWUP" : "MO02_PEOPLE";
     case "MO01_GOAL_FOLLOWUP":
       return nextPriority(record) ? "MO01_GOAL_FOLLOWUP" : "MO02_PEOPLE";
-    case "MO02_PEOPLE":
-      return record.people_circumstance_flags.length
-        ? "MO02_CIRCUMSTANCES"
-        : "MO03_CURRENT_PLAN";
+    case "MO02_PEOPLE": {
+      const circumstancesResolved =
+        record.people_circumstance_flags.length > 0 ||
+        patch.people_circumstance_flags !== null;
+      return circumstancesResolved ? "MO03_CURRENT_PLAN" : "MO02_CIRCUMSTANCES";
+    }
     case "MO02_CIRCUMSTANCES":
       return "MO03_CURRENT_PLAN";
     case "MO03_CURRENT_PLAN":
@@ -344,6 +360,7 @@ export function applyAcceptedInterpretation(
       },
       state: {
         step: "STOPPED" as const,
+        progressBeforeStop: getProgress(state.step),
         clarification: null,
         stop: interpretation.stop,
       },
@@ -353,7 +370,7 @@ export function applyAcceptedInterpretation(
 
   const updatedRecord = applyStepPatch(record, state.step, interpretation.patch);
   const updatedState: WorkflowState = {
-    step: nextStep(updatedRecord, state.step),
+    step: nextStep(updatedRecord, state.step, interpretation.patch),
     clarification: null,
     stop: null,
   };

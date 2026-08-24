@@ -75,6 +75,26 @@ insert into public.evidence_files (
     '{}'::jsonb
   );
 
+insert into public.estate_blueprints (
+  id, matter_id, owner_id, status, generation_input, frozen_at
+) values
+  (
+    'eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee',
+    'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+    '11111111-1111-4111-8111-111111111111',
+    'generating',
+    '{"blueprint_id":"eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee"}'::jsonb,
+    '2026-08-23T12:00:00Z'
+  ),
+  (
+    'ffffffff-ffff-4fff-8fff-ffffffffffff',
+    'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',
+    '22222222-2222-4222-8222-222222222222',
+    'generating',
+    '{"blueprint_id":"ffffffff-ffff-4fff-8fff-ffffffffffff"}'::jsonb,
+    '2026-08-23T12:00:00Z'
+  );
+
 select set_config(
   'request.jwt.claims',
   '{"sub":"11111111-1111-4111-8111-111111111111","role":"authenticated"}',
@@ -89,6 +109,7 @@ declare
   foreign_blueprints integer;
   foreign_decisions integer;
   foreign_evidence integer;
+  foreign_estate_blueprints integer;
   changed_rows integer;
 begin
   select count(*) into visible_matters from public.matters;
@@ -112,9 +133,28 @@ begin
   select count(*) into foreign_evidence
     from public.evidence_files
     where owner_id = '22222222-2222-4222-8222-222222222222';
-  if foreign_blueprints <> 0 or foreign_decisions <> 0 or foreign_evidence <> 0 then
+  select count(*) into foreign_estate_blueprints
+    from public.estate_blueprints
+    where owner_id = '22222222-2222-4222-8222-222222222222';
+  if foreign_blueprints <> 0 or
+     foreign_decisions <> 0 or
+     foreign_evidence <> 0 or
+     foreign_estate_blueprints <> 0 then
     raise exception 'RLS failure: User A read User B Blueprint data';
   end if;
+
+  begin
+    update public.estate_blueprints
+      set download_filename = 'Unauthorized.pdf'
+      where owner_id = '22222222-2222-4222-8222-222222222222';
+    get diagnostics changed_rows = row_count;
+    if changed_rows <> 0 then
+      raise exception 'RLS failure: User A mutated User B Estate Blueprint';
+    end if;
+  exception
+    when insufficient_privilege then
+      null;
+  end;
 
   begin
     update public.matters

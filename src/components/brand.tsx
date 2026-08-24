@@ -6,7 +6,6 @@ export function Brand() {
       </span>
       <span>
         <strong>Estate Coordinator</strong>
-        <small>Controlled student beta</small>
       </span>
     </div>
   );

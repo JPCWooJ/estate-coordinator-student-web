@@ -4,6 +4,8 @@ import {
   BlueprintAnswerInterpretation,
   BlueprintState,
   EvidenceTreatment,
+  FinalReviewCorrection,
+  FinalReviewProfile,
   RecommendationContent,
   RecommendationDomain,
   RecommendationResponse,
@@ -15,6 +17,26 @@ import {
   PlanningSummaryCorrection,
   WorkflowState,
 } from "@/lib/domain/matter-opening";
+
+export function interpretSyntheticFinalReviewCorrection(input: {
+  correction: string;
+  profile: FinalReviewProfile;
+}): FinalReviewCorrection {
+  if (input.correction === "Change the lifetime-security floor to $6 million.") {
+    return {
+      section: "planning_baseline",
+      replacement: "Preserve $6 million.",
+      acknowledgement: "The planning baseline now preserves $6 million.",
+    };
+  }
+
+  return {
+    section: "goals_and_priorities",
+    replacement: input.profile.goals_and_priorities,
+    acknowledgement:
+      "I could not identify a supported local change, so the Final Review remains unchanged.",
+  };
+}
 
 const OUTCOMES_ANSWER =
   "My top priorities are intended transfer, incapacity readiness, and tax minimization; keep things practical and simple.";
@@ -213,6 +235,29 @@ export function interpretSyntheticBlueprintAnswer(input: {
     beneficiary_outcomes: null,
     fiduciary_continuity_outcomes: null,
   };
+  if (input.answer === "My authority to act is disputed.") {
+    return {
+      outcome: "stop",
+      acknowledgement: "",
+      clarification_question: null,
+      patch: emptyPatch,
+      stop: {
+        category: "identity_or_authority",
+        reason: input.answer,
+        affected_objects: ["Estate Blueprint"],
+        resolution_condition:
+          "The principal's identity and decision authority must be confirmed.",
+        assigned_owner: "Estate-planning counsel",
+        escalation_path:
+          "Pause the Blueprint and have estate-planning counsel resolve authority before continuation.",
+        evidence_required_to_resume: [
+          "Professional confirmation of the principal's identity and decision authority",
+        ],
+        immediate_action:
+          "Contact estate-planning counsel to confirm authority before continuing.",
+      },
+    };
+  }
   if (input.answer === "I need a little help with that.") {
     return {
       outcome: "clarification",
@@ -220,6 +265,7 @@ export function interpretSyntheticBlueprintAnswer(input: {
       clarification_question:
         "What part of this outcome is most important for your plan to preserve?",
       patch: emptyPatch,
+      stop: null,
     };
   }
   if (input.state.current_gate === 2) {
@@ -242,6 +288,7 @@ export function interpretSyntheticBlueprintAnswer(input: {
             "education support for two grandchildren",
         },
       },
+      stop: null,
     };
   }
   if (input.state.current_gate === 4) {
@@ -263,6 +310,7 @@ export function interpretSyntheticBlueprintAnswer(input: {
             "the family business should remain under coordinated management",
         },
       },
+      stop: null,
     };
   }
   return {
@@ -283,6 +331,7 @@ export function interpretSyntheticBlueprintAnswer(input: {
           "larger participation after financial education and demonstrated judgment",
       },
     },
+    stop: null,
   };
 }
 
@@ -304,6 +353,83 @@ export function generateSyntheticRecommendation(input: {
         "Does this recommended structure fit your objectives, or would it prevent a personal outcome you want?",
     };
   }
+  if (input.domain === "special_asset") {
+    return {
+      objective: "Preserve specialized assets without overloading general fiduciary roles",
+      starting_point:
+        "We recommend a separate continuity and oversight plan for the identified special assets, with a qualified manager or adviser and a named backup coordinated with the fiduciary structure.",
+      rationale:
+        "Special assets can require operating knowledge, access, valuation, or succession planning that differs from ordinary trust administration.",
+      alternative_or_tradeoff:
+        "Using the general fiduciary alone is simpler, but it may leave specialized operating responsibilities without the right expertise.",
+      open_confirmation:
+        "Counsel and the relevant asset advisers should confirm authority, succession, and operating requirements.",
+      response_question:
+        "Does this separate treatment fit the special assets or purposes you identified?",
+    };
+  }
+  if (input.domain === "readiness") {
+    return {
+      objective: "Match beneficiary participation to demonstrated readiness",
+      starting_point:
+        "We recommend increasing beneficiary participation as financial education, judgment, and practical readiness are demonstrated, without requiring a full transfer at a fixed age.",
+      rationale:
+        "This preserves protection while giving beneficiaries a clear path toward appropriate participation and responsibility.",
+      alternative_or_tradeoff:
+        "Fixed-age authority is simpler to administer, but it may not match actual readiness.",
+      open_confirmation:
+        "Counsel should confirm how the readiness standard and decision authority are expressed in the final documents.",
+      response_question:
+        "Does this readiness progression fit the responsibility you want beneficiaries to assume?",
+    };
+  }
+  if (input.domain === "tax_transfer_strategy") {
+    return {
+      objective:
+        "Preserve lifetime security while evaluating tax and transfer opportunities",
+      starting_point:
+        "We recommend modeling transfers only for value above the confirmed lifetime-security and retained-control boundaries, with retaining the assets modeled as the comparison case.",
+      rationale:
+        "This keeps tax planning subordinate to lifetime security while showing the tax, basis, control, liquidity, cost, administration, and downside tradeoffs of transferring versus retaining material assets.",
+      alternative_or_tradeoff:
+        "Retaining assets preserves control and may preserve tax benefits; transferring can reduce future estate exposure but adds cost, complexity, and liquidity demands.",
+      open_confirmation:
+        "Tax advisers, estate-planning counsel, and valuation professionals must confirm current law, values, transfer capacity, and implementation terms.",
+      response_question:
+        "Does this tax and transfer-planning direction fit your priorities?",
+    };
+  }
+  if (input.domain === "administration_liquidity") {
+    return {
+      objective:
+        "Reduce avoidable administration while preserving estate liquidity",
+      starting_point:
+        "We recommend using the revocable plan as the administrative hub, coordinating ownership and beneficiary designations with it, and confirming a practical source of estate liquidity.",
+      rationale:
+        "This can reduce avoidable probate and transfer friction while preserving estate liquidity and flexibility for the home, business, and other potentially illiquid assets.",
+      alternative_or_tradeoff:
+        "More lifetime restructuring may reduce later administration, but it adds current cost, complexity, and professional maintenance.",
+      open_confirmation:
+        "Counsel and financial advisers should confirm ownership, beneficiary designations, administrative transfer paths, and available liquidity.",
+      response_question:
+        "Does this administrative and liquidity direction fit your objectives?",
+    };
+  }
+  if (input.domain === "asset_transfer_strategy") {
+    return {
+      objective: "Coordinate material assets with the broader transfer plan",
+      starting_point:
+        "We recommend confirming separate ownership, transfer, valuation, liquidity, and succession treatment for each materially distinct asset before implementation.",
+      rationale:
+        "A general estate structure should not override asset-specific restrictions or operating requirements.",
+      alternative_or_tradeoff:
+        "Uniform treatment is simpler, but it can create avoidable control, liquidity, or administration problems for specialized assets.",
+      open_confirmation:
+        "Counsel and the relevant asset advisers should confirm the asset-specific implementation requirements.",
+      response_question:
+        "Does this asset-specific transfer direction fit the assets you identified?",
+    };
+  }
   return {
     objective: "Keep essential responsibilities and decision-making continuous",
     starting_point:
@@ -323,6 +449,31 @@ export function interpretSyntheticRecommendationResponse(input: {
   answer: string;
   state: BlueprintState;
 }): RecommendationResponse {
+  if (input.answer === "Someone is pressuring me to accept this.") {
+    return {
+      outcome: "stop",
+      acknowledgement: "",
+      clarification_question: null,
+      disposition: null,
+      modification: null,
+      open_confirmation: null,
+      stop: {
+        category: "capacity_or_voluntariness",
+        reason: input.answer,
+        affected_objects: ["Active Blueprint recommendation"],
+        resolution_condition:
+          "The principal's decision must be confirmed as voluntary and free from coercion.",
+        assigned_owner: "Estate-planning counsel",
+        escalation_path:
+          "Pause the Blueprint and refer the concern to estate-planning counsel for private review.",
+        evidence_required_to_resume: [
+          "Professional confirmation that the principal can proceed voluntarily",
+        ],
+        immediate_action:
+          "Pause this decision and contact estate-planning counsel for a private review.",
+      },
+    };
+  }
   if (input.answer === "Please explain the tradeoff.") {
     return {
       outcome: "clarification",
@@ -332,6 +483,7 @@ export function interpretSyntheticRecommendationResponse(input: {
       disposition: null,
       modification: null,
       open_confirmation: null,
+      stop: null,
     };
   }
   const normalized = input.answer.toLowerCase();
@@ -354,6 +506,7 @@ export function interpretSyntheticRecommendationResponse(input: {
     modification: disposition === "modify" ? input.answer : null,
     open_confirmation:
       disposition === "confirmation_required" ? input.answer : null,
+    stop: null,
   };
 }
 

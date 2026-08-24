@@ -1,0 +1,22 @@
+export const USER_JOURNEY_PROGRESS = {
+  estatePlanningPriorities: {
+    outcomes: 5,
+    priorities: 10,
+    goalFollowup: 15,
+    people: 20,
+    circumstances: 23,
+    currentPlan: 27,
+    planDetails: 31,
+    changes: 35,
+    timing: 39,
+    footprint: 42,
+    complexity: 45,
+    contacts: 47,
+    houseInOrder: 49,
+  },
+  planningSummary: 50,
+  planningFoundation: 55,
+  blueprintDecisions: 75,
+  finalReview: 90,
+  estateBlueprint: 100,
+} as const;

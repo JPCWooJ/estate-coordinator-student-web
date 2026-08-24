@@ -72,7 +72,7 @@ export function buildPrincipalPlanningSummary(
     successDefinition: valueOrUnknown(record.principal_definition_of_success),
     priorityContext: formatPriorityContext(record),
     peopleAndInterests: valueOrUnknown(record.people_and_interests_snapshot),
-    peopleFlags: listOrUnknown(record.people_circumstance_flags),
+    peopleFlags: record.people_circumstance_flags,
     currentPlanSnapshot: valueOrUnknown(record.current_plan_snapshot),
     currentPlanStatus: CURRENT_PLAN_STATUS_LABEL[record.current_plan_status],
     knownChanges: listOrUnknown(

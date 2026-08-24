@@ -1,8 +1,15 @@
-import type { NextRequest } from "next/server";
+import { NextResponse, type NextRequest } from "next/server";
 
 import { refreshSupabaseSession } from "@/lib/server/supabase-proxy";
 
+export function shouldRefreshSupabaseSession(pathname: string) {
+  return pathname !== "/auth/callback" && !pathname.startsWith("/auth/callback/");
+}
+
 export async function proxy(request: NextRequest) {
+  if (!shouldRefreshSupabaseSession(request.nextUrl.pathname)) {
+    return NextResponse.next({ request });
+  }
   return refreshSupabaseSession(request);
 }
 

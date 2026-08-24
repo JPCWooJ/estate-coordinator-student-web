@@ -1,0 +1,416 @@
+import { expect, test, type Page } from "@playwright/test";
+
+const USER_A = "11111111-1111-4111-8111-111111111111";
+
+async function resetSyntheticState(page: Page) {
+  await page.goto("/");
+  expect(
+    await page.evaluate(async () =>
+      (
+        await fetch("/api/test/reset", {
+          method: "POST",
+          headers: { origin: window.location.origin },
+        })
+      ).status,
+    ),
+  ).toBe(200);
+}
+
+async function seedBlueprintScenario(
+  page: Page,
+  scenario: "zero_turn" | "incomplete" | "triggered",
+) {
+  await resetSyntheticState(page);
+  expect(
+    await page.evaluate(async (userId) =>
+      (
+        await fetch("/api/session", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ userId }),
+        })
+      ).status,
+    USER_A),
+  ).toBe(200);
+  const result = await page.evaluate(async (selectedScenario) => {
+    const response = await fetch("/api/test/blueprint-scenario", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ scenario: selectedScenario }),
+    });
+    return { status: response.status, body: await response.json() };
+  }, scenario);
+  expect(result.status).toBe(201);
+  return result.body.id as string;
+}
+
+async function answer(page: Page, value: string) {
+  await page.getByLabel("Your response").fill(value);
+  const responsePromise = page.waitForResponse(
+    (response) =>
+      new URL(response.url()).pathname.endsWith("/turns") &&
+      response.request().method() === "POST",
+  );
+  await page.getByRole("button", { name: "Continue" }).click();
+  const response = await responsePromise;
+  if (!response.ok()) throw new Error(await response.text());
+  await expect(page.locator(".save-state")).toContainText("Saved");
+  return response.json();
+}
+
+test("authenticated start renders a principal-facing disclosure without internal terminology", async ({
+  page,
+}) => {
+  await resetSyntheticState(page);
+  await page.getByRole("button", { name: "Use synthetic student A" }).click();
+  await expect(page).toHaveURL(/\/home$/);
+
+  const disclosure = page.locator(".notice-card");
+  await expect(disclosure).toBeVisible();
+  await expect(
+    disclosure.getByRole("heading", { name: "Private estate-planning workspace" }),
+  ).toBeVisible();
+  await expect(disclosure).toContainText(
+    "Estate Coordinator supports planning and organization.",
+  );
+  await expect(disclosure).toContainText(
+    "Do not enter passwords, private keys, seed phrases",
+  );
+  await expect(disclosure).toContainText(
+    "Existing estate-planning documents are not reviewed in this phase.",
+  );
+  await expect(disclosure).not.toContainText(
+    /student|beta|cohort|invitation|internal(?:-| )test/i,
+  );
+  await expect(page.locator('meta[name="description"]')).toHaveAttribute(
+    "content",
+    "Estate Coordinator guides principals through estate-planning priorities, recommendations, and Estate Blueprint decisions.",
+  );
+  await expect(page.getByRole("checkbox")).not.toBeChecked();
+  await expect(
+    page.getByRole("button", { name: "Acknowledge and continue" }),
+  ).toBeDisabled();
+});
+
+test("mandatory Matter Opening stop retains non-complete progress across reload", async ({
+  page,
+}) => {
+  await resetSyntheticState(page);
+  await page.getByRole("button", { name: "Use synthetic student A" }).click();
+  await page.getByRole("checkbox").check();
+  await page
+    .getByRole("button", { name: "Acknowledge and continue" })
+    .click();
+  await page.getByRole("button", { name: "Start planning priorities" }).click();
+  await page.getByRole("button", { name: "Begin", exact: true }).click();
+
+  const stopped = await answer(page, "A death occurred yesterday.");
+  expect(stopped.matter.progress).toBe(5);
+  expect(stopped.matter.progress).toBeLessThan(100);
+  await expect(
+    page.getByRole("heading", {
+      name: "A qualified professional should review this next",
+    }),
+  ).toBeVisible();
+  await expect(page.getByRole("progressbar")).toHaveAttribute(
+    "aria-valuenow",
+    "5",
+  );
+  await expect(page.locator(".progress-copy strong")).toHaveText("5%");
+
+  await page.reload();
+  await expect(
+    page.getByRole("heading", {
+      name: "A qualified professional should review this next",
+    }),
+  ).toBeVisible();
+  await expect(page.getByRole("progressbar")).toHaveAttribute(
+    "aria-valuenow",
+    "5",
+  );
+  await expect(page.locator(".progress-copy strong")).toHaveText("5%");
+});
+
+test("intended entry runs uninterrupted through Matter Opening and Final Review", async ({
+  page,
+}) => {
+  await resetSyntheticState(page);
+  await expect(
+    page.getByRole("heading", {
+      level: 1,
+      name: "Build an estate plan that protects the people you love.",
+    }),
+  ).toBeVisible();
+
+  await page.getByRole("button", { name: "Use synthetic student A" }).click();
+  await expect(page).toHaveURL(/\/home$/);
+  await page.getByRole("checkbox").check();
+  await page
+    .getByRole("button", { name: "Acknowledge and continue" })
+    .click();
+  const start = page.getByRole("button", { name: "Start planning priorities" });
+  await expect(start).toBeVisible();
+  await start.click();
+  await expect(page).toHaveURL(/\/matter\//);
+  await page.getByRole("button", { name: "Begin", exact: true }).click();
+
+  const progress: number[] = [];
+  const answerAndTrack = async (value: string) => {
+    const body = await answer(page, value);
+    progress.push(body.matter.progress as number);
+    return body;
+  };
+
+  await answerAndTrack(
+    "My top priorities are intended transfer, incapacity readiness, and tax minimization; keep things practical and simple.",
+  );
+  await answerAndTrack("My spouse and children should benefit through a protected plan.");
+  await answerAndTrack("Household and investment decisions must continue if I am incapacitated.");
+  await answerAndTrack("Avoid unnecessary tax complexity and cost.");
+  await answerAndTrack("My spouse and two adult children should benefit and be protected.");
+  await answerAndTrack("I have a living trust and will that need updating.");
+  await answerAndTrack("The living trust and will were completed in 2018.");
+  await answerAndTrack("The family business and digital assets are now more important.");
+  await answerAndTrack("I want to get organized, and there is no fixed deadline.");
+  await answerAndTrack("My primary home is in Florida, with a rental property in Georgia.");
+  await answerAndTrack("A family business and digital assets should be considered.");
+  await answerAndTrack(
+    "Jordan Lee at Harbor Counsel should serve as planning counsel, and my spouse should participate.",
+  );
+  await answerAndTrack("A clear plan, named backups, and professional confirmation.");
+
+  await expect(
+    page.getByRole("heading", { name: "Your Planning Summary" }),
+  ).toBeVisible();
+  await expect(page.locator("body")).not.toContainText("Flags: Not yet known");
+  await page
+    .getByRole("button", { name: "Confirm planning summary" })
+    .click();
+  await expect(page.getByText(/To establish the planning range/)).toBeVisible();
+  await expect(
+    page.getByText("Planning Foundation", { exact: true }).first(),
+  ).toBeVisible();
+
+  await answerAndTrack(
+    "Our planning ranges, liabilities, lifetime-security floor, retained-control needs, and future obligations are ready.",
+  );
+  await expect(page.getByText(/Before recommending a beneficiary structure/)).toBeVisible();
+  await answerAndTrack(
+    "My spouse and two adult children should benefit equally, with descendants as substitutes, continuing protection, readiness-based participation, and coordinated treatment for the family business.",
+  );
+  await expect(
+    page.getByRole("heading", {
+      name: "Protect beneficiaries while preserving useful access",
+    }),
+  ).toBeVisible();
+  await answerAndTrack("I accept this recommendation.");
+  await expect(page.getByText(/In one answer, tell us what matters about/)).toBeVisible();
+  await answerAndTrack(
+    "My spouse and Jordan Lee can serve, with an independent trust company as backup. Household, investment, and business responsibilities must continue. The family business and digital assets need separate instructions, and beneficiaries should gain authority after financial education and demonstrated judgment.",
+  );
+  await answerAndTrack("I accept this starting structure.");
+  await answerAndTrack("I accept this separate treatment.");
+  const stageFive = await answerAndTrack("I accept this readiness progression.");
+
+  await expect(
+    page.getByRole("heading", {
+      name: "Preserve lifetime security while evaluating tax and transfer opportunities",
+    }),
+  ).toBeVisible();
+  expect(stageFive.matter.blueprintState.completed_gates).toContain(5);
+  expect(stageFive.matter.decisions.map((decision: { decision_id: string }) => decision.decision_id)).toEqual([
+    "BR-004-BENEFICIARY",
+    "BR-005-FIDUCIARY-CONTINUITY",
+    "BR-005-SPECIAL-ASSET",
+    "BR-005-READINESS",
+  ]);
+  await answerAndTrack("I accept this tax and transfer direction.");
+  const finalReview = await answerAndTrack(
+    "I accept this administration and liquidity direction.",
+  );
+  await expect(
+    page.getByRole("heading", { name: "Review your Estate Blueprint" }),
+  ).toBeVisible();
+  expect(finalReview.matter.blueprintState.completed_gates).toContain(6);
+  expect(finalReview.matter.decisions.map((decision: { decision_id: string }) => decision.decision_id)).toEqual([
+    "BR-004-BENEFICIARY",
+    "BR-005-FIDUCIARY-CONTINUITY",
+    "BR-005-SPECIAL-ASSET",
+    "BR-005-READINESS",
+    "BR-006-TAX-TRANSFER",
+    "BR-006-ADMINISTRATION-LIQUIDITY",
+  ]);
+  expect(
+    progress.every(
+      (value, index) => index === 0 || value >= progress[index - 1]!,
+    ),
+  ).toBe(true);
+  await expect(page.locator("body")).not.toContainText(/Stage\s+[1-7]/i);
+});
+
+test("transport failure preserves an answer and restores retry controls", async ({
+  page,
+}) => {
+  const matterId = await seedBlueprintScenario(page, "incomplete");
+  await page.goto(`/matter/${matterId}`);
+  const endpoint = `**/api/matters/${matterId}/blueprint/turns`;
+  await page.route(endpoint, (route) => route.abort("failed"));
+
+  const answerField = page.getByLabel("Your response");
+  const value = "Our planning ranges and lifetime-security requirements are ready.";
+  await answerField.fill(value);
+  await page.getByRole("button", { name: "Continue" }).click();
+
+  await expect(page.locator(".save-state")).toContainText("Not saved - retry");
+  await expect(page.locator(".error-text")).toContainText(
+    "Your response could not be saved. Please retry.",
+  );
+  await expect(answerField).toBeEnabled();
+  await expect(answerField).toHaveValue(value);
+  await expect(page.getByRole("button", { name: "Continue" })).toBeEnabled();
+
+  await page.unroute(endpoint);
+  await answer(page, value);
+  await expect(
+    page.getByRole("heading", {
+      name: "Protect beneficiaries while preserving useful access",
+    }),
+  ).toBeVisible();
+});
+
+test("malformed evidence response restores evidence controls", async ({ page }) => {
+  const matterId = await seedBlueprintScenario(page, "triggered");
+  await page.goto(`/matter/${matterId}`);
+  const endpoint = `**/api/matters/${matterId}/blueprint/evidence`;
+  await page.route(endpoint, (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: "{malformed",
+    }),
+  );
+
+  await page.getByRole("button", { name: "I do not have this now" }).click();
+  await expect(page.locator(".save-state")).toContainText("Not saved - retry");
+  await expect(page.locator(".error-text")).toContainText(
+    "The evidence could not be processed. Please retry.",
+  );
+  await expect(
+    page.getByRole("button", { name: "I do not have this now" }),
+  ).toBeEnabled();
+  await expect(page.getByLabel("Relevant PDF")).toBeEnabled();
+
+  await page.unroute(endpoint);
+  await page.getByRole("button", { name: "I do not have this now" }).click();
+  await expect(
+    page.getByRole("heading", {
+      name: "Protect beneficiaries while preserving useful access",
+    }),
+  ).toBeVisible();
+});
+
+test("Blueprint clarification appears once as the active question", async ({
+  page,
+}) => {
+  const matterId = await seedBlueprintScenario(page, "zero_turn");
+  await page.goto(`/matter/${matterId}`);
+  await answer(page, "Please explain the tradeoff.");
+
+  const clarification =
+    "Which outcome or tradeoff would you like the recommendation to handle differently?";
+  await expect(page.getByText(clarification, { exact: true })).toHaveCount(1);
+  await expect(page.locator(".active-question")).toContainText(clarification);
+  await expect(page.getByLabel("Your response")).toBeEnabled();
+
+  await page.reload();
+  await expect(page.getByText(clarification, { exact: true })).toHaveCount(1);
+  await expect(page.locator(".active-question")).toContainText(clarification);
+  await answer(
+    page,
+    "Preserve continuing protection while allowing useful access.",
+  );
+  await expect(
+    page.getByRole("heading", {
+      name: "Protect beneficiaries while preserving useful access",
+    }),
+  ).toBeVisible();
+
+  const disposition = await answer(page, "I accept this recommendation.");
+  expect(
+    disposition.matter.decisions.map(
+      (decision: { decision_id: string }) => decision.decision_id,
+    ),
+  ).toEqual(["BR-004-BENEFICIARY"]);
+
+  await page.reload();
+  await expect(
+    page.getByText(/In one answer, tell us what matters about/),
+  ).toBeVisible();
+  await expect(page.getByRole("progressbar")).toHaveAttribute(
+    "aria-valuenow",
+    "75",
+  );
+  await answer(
+    page,
+    "My spouse and Jordan Lee can serve, with an independent trust company as backup. Household, investment, and business responsibilities must continue. The family business and digital assets need separate instructions, and beneficiaries should gain authority after financial education and demonstrated judgment.",
+  );
+  await answer(page, "I accept this starting structure.");
+  await answer(page, "I accept this separate treatment.");
+  await answer(page, "I accept this readiness progression.");
+
+  await expect(
+    page.getByRole("heading", {
+      name: "Preserve lifetime security while evaluating tax and transfer opportunities",
+    }),
+  ).toBeVisible();
+  await answer(page, "I accept this tax and transfer direction.");
+  const finalReview = await answer(
+    page,
+    "I accept this administration and liquidity direction.",
+  );
+  await expect(
+    page.getByRole("heading", { name: "Review your Estate Blueprint" }),
+  ).toBeVisible();
+  expect(finalReview.matter.blueprintState.completed_gates).toContain(6);
+  expect(
+    finalReview.matter.decisions.map(
+      (decision: { decision_id: string }) => decision.decision_id,
+    ),
+  ).toEqual([
+    "BR-004-BENEFICIARY",
+    "BR-005-FIDUCIARY-CONTINUITY",
+    "BR-005-SPECIAL-ASSET",
+    "BR-005-READINESS",
+    "BR-006-TAX-TRANSFER",
+    "BR-006-ADMINISTRATION-LIQUIDITY",
+  ]);
+});
+
+test("an expired session returns a matter route cleanly to sign-in", async ({
+  page,
+}) => {
+  await page.route("**/api/session", (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({ user: null, betaAcknowledged: false }),
+    }),
+  );
+  await page.route("**/api/matters/expired-session", (route) =>
+    route.fulfill({
+      status: 401,
+      contentType: "application/json",
+      body: JSON.stringify({ error: "Unauthorized." }),
+    }),
+  );
+
+  await page.goto("/matter/expired-session");
+  await expect(page).toHaveURL(/^http:\/\/127\.0\.0\.1:3100\/$/);
+  await expect(
+    page.getByRole("heading", {
+      level: 1,
+      name: "Build an estate plan that protects the people you love.",
+    }),
+  ).toBeVisible();
+  await expect(page.getByText("Unauthorized.", { exact: true })).toHaveCount(0);
+});

@@ -11,12 +11,15 @@ import {
   PlanningSummaryCorrection,
   WorkflowState,
 } from "./matter-opening";
+import { phaseProgress } from "./blueprint";
 import { buildPrincipalPlanningSummary } from "./planning-summary";
 import {
   applyAcceptedInterpretation,
   applyPlanningSummaryCorrection,
   confirmOpening,
   getCanonicalQuestion,
+  getProgress,
+  getWorkflowProgress,
 } from "./workflow";
 
 function accepted(
@@ -94,6 +97,65 @@ function confirmationReadyRecord(): MatterOpeningRecord {
 }
 
 describe("Matter Opening v0.4 workflow", () => {
+  it("keeps user-facing progress continuous through Blueprint Decisions", () => {
+    const progress = [
+      getProgress("MO01_OUTCOMES"),
+      getProgress("MO01_PRIORITIES"),
+      getProgress("MO01_GOAL_FOLLOWUP"),
+      getProgress("MO02_PEOPLE"),
+      getProgress("MO02_CIRCUMSTANCES"),
+      getProgress("MO03_CURRENT_PLAN"),
+      getProgress("MO03_PLAN_DETAILS"),
+      getProgress("MO03_CHANGES"),
+      getProgress("MO04_TIMING"),
+      getProgress("MO05_FOOTPRINT"),
+      getProgress("MO05_COMPLEXITY"),
+      getProgress("MO06_CONTACTS"),
+      getProgress("MO08_HOUSE_IN_ORDER"),
+      getProgress("MO08_CONFIRM"),
+      getProgress("BLUEPRINT_READY"),
+      phaseProgress("PLANNING_FOUNDATION"),
+      phaseProgress("BLUEPRINT_DECISIONS"),
+    ];
+
+    expect(progress).toEqual([5, 10, 15, 20, 23, 27, 31, 35, 39, 42, 45, 47, 49, 50, 55, 55, 75]);
+    expect(progress.every((value, index) => index === 0 || value >= progress[index - 1]!)).toBe(
+      true,
+    );
+  });
+
+  it("preserves meaningful non-complete progress when Matter Opening stops", () => {
+    const record = createInitialRecord("aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa");
+    const state: WorkflowState = {
+      step: "MO05_COMPLEXITY",
+      clarification: null,
+      stop: null,
+    };
+    const result = advance(record, state, {
+      outcome: "stop",
+      acknowledgement: "",
+      clarification_question: null,
+      patch: emptyInterpretationPatch(),
+      stop: {
+        category: "expedited_event",
+        reason: "A death occurred yesterday.",
+        immediate_action: "Contact the estate attorney before continuing planning.",
+      },
+    });
+
+    expect(result.state.step).toBe("STOPPED");
+    expect(result.state.progressBeforeStop).toBe(getProgress("MO05_COMPLEXITY"));
+    expect(getWorkflowProgress(result.state)).toBe(getProgress("MO05_COMPLEXITY"));
+    expect(getWorkflowProgress(result.state)).toBeLessThan(100);
+    expect(
+      getWorkflowProgress({
+        step: "STOPPED",
+        clarification: null,
+        stop: result.state.stop,
+      }),
+    ).toBe(getProgress("MO01_OUTCOMES"));
+  });
+
   it("uses the approved outcome taxonomy", () => {
     expect(OutcomeCodeSchema.options).toEqual([
       "intended_transfer",
@@ -215,6 +277,56 @@ describe("Matter Opening v0.4 workflow", () => {
     }
     expect(state.step).toBe("MO02_PEOPLE");
     expect(record.priority_details).toHaveLength(3);
+  });
+
+  it("asks MO-02 circumstances only when the circumstance state remains unresolved", () => {
+    const record = createInitialRecord("aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa");
+    const state: WorkflowState = {
+      step: "MO02_PEOPLE",
+      clarification: null,
+      stop: null,
+    };
+
+    const previouslyCaptured = advance(
+      {
+        ...record,
+        people_circumstance_flags: ["blended family"],
+      },
+      state,
+      accepted({
+        people_and_interests_snapshot: "A spouse and children from prior relationships.",
+      }),
+    );
+    expect(previouslyCaptured.state.step).toBe("MO03_CURRENT_PLAN");
+
+    const captured = advance(
+      record,
+      state,
+      accepted({
+        people_and_interests_snapshot: "A spouse and a child with special needs.",
+        people_circumstance_flags: ["special needs"],
+      }),
+    );
+    expect(captured.state.step).toBe("MO03_CURRENT_PLAN");
+
+    const explicitlyNone = advance(
+      record,
+      state,
+      accepted({
+        people_and_interests_snapshot: "A spouse and two adult children.",
+        people_circumstance_flags: [],
+      }),
+    );
+    expect(explicitlyNone.state.step).toBe("MO03_CURRENT_PLAN");
+
+    const unresolved = advance(
+      record,
+      state,
+      accepted({
+        people_and_interests_snapshot: "A spouse and two children.",
+      }),
+    );
+    expect(unresolved.state.step).toBe("MO02_CIRCUMSTANCES");
   });
 
   it("persists clarification as the active question without advancing or mutating the record", () => {
@@ -401,6 +513,7 @@ describe("Matter Opening v0.4 workflow", () => {
     const serialized = JSON.stringify(summary);
 
     expect(summary.currentPlanSnapshot).toContain("2018");
+    expect(summary.peopleFlags).toEqual([]);
     expect(summary.knownChanges).toContain("Moved primary residence to Florida.");
     expect(summary.complexityFlags).toContain("Georgia rental");
     expect(summary.contacts[0]?.name).toBe("Jordan Lee");

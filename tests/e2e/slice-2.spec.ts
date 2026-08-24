@@ -103,7 +103,7 @@ function textPdf(text: string) {
   return Buffer.from(body);
 }
 
-test("uninterrupted zero-turn foundation reaches and completes Blueprint Decisions", async ({
+test("uninterrupted zero-turn foundation reaches Final Review through residual decisions", async ({
   page,
 }, testInfo) => {
   const id = await seed(page, "zero_turn");
@@ -141,14 +141,42 @@ test("uninterrupted zero-turn foundation reaches and completes Blueprint Decisio
   ).toBeVisible();
   await expectViewportFit(page);
 
-  const completed = await answer(page, "I accept this starting structure.");
+  const continuity = await answer(page, "I accept this starting structure.");
+  expect(continuity.matter.decisions).toHaveLength(2);
   await expect(
-    page.getByRole("heading", { name: "Your Blueprint decisions are saved" }),
+    page.getByRole("heading", {
+      name: "Preserve specialized assets without overloading general fiduciary roles",
+    }),
   ).toBeVisible();
-  expect(completed.matter.decisions).toHaveLength(2);
-  expect(completed.matter.blueprintState.completed_gates).toContain(5);
+
+  const specialAsset = await answer(page, "I accept this separate treatment.");
+  expect(specialAsset.matter.decisions).toHaveLength(3);
+  await expect(
+    page.getByRole("heading", {
+      name: "Match beneficiary participation to demonstrated readiness",
+    }),
+  ).toBeVisible();
+
+  const stageFive = await answer(page, "I accept this readiness progression.");
+  await expect(
+    page.getByRole("heading", {
+      name: "Preserve lifetime security while evaluating tax and transfer opportunities",
+    }),
+  ).toBeVisible();
+  expect(stageFive.matter.decisions).toHaveLength(4);
+  expect(stageFive.matter.blueprintState.completed_gates).toContain(5);
+  await answer(page, "I accept this tax and transfer direction.");
+  const finalReview = await answer(
+    page,
+    "I accept this administration and liquidity direction.",
+  );
+  await expect(
+    page.getByRole("heading", { name: "Review your Estate Blueprint" }),
+  ).toBeVisible();
+  expect(finalReview.matter.decisions).toHaveLength(6);
+  expect(finalReview.matter.blueprintState.completed_gates).toContain(6);
+  expect(finalReview.matter.blueprintState.phase).toBe("FINAL_REVIEW");
   await expect(page.getByText(/Stage\s+[1-7]/i)).toHaveCount(0);
-  await expect(page.locator("body")).not.toContainText("Final Review");
   await expect(page.locator("body")).not.toContainText("Generate Blueprint");
   await expectViewportFit(page);
 });

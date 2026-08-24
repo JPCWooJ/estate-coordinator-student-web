@@ -438,6 +438,7 @@ beforeEach(() => {
     disposition: "accept",
     modification: null,
     open_confirmation: null,
+    stop: null,
   });
   mocks.interpretBlueprintAnswer.mockResolvedValue({
     outcome: "clarification",
@@ -448,6 +449,7 @@ beforeEach(() => {
       beneficiary_outcomes: null,
       fiduciary_continuity_outcomes: null,
     },
+    stop: null,
   });
   mocks.extractStageRelevantEvidence.mockResolvedValue(
     "The beneficiary has no unilateral withdrawal power.",
@@ -563,6 +565,71 @@ describe("Blueprint server/API idempotency", () => {
       "apply_blueprint_turn",
       "apply_blueprint_turn",
     ]);
+  });
+
+  it("durably saves the exact API-returned model identities with the Blueprint state and decision", async () => {
+    const recommendationGeneration = {
+      operation: "blueprint_recommendation" as const,
+      configured_model: "gpt-5.6",
+      returned_model: "gpt-5.6-2026-08-07",
+      response_id: "resp_recommendation",
+    };
+    const responseGeneration = {
+      operation: "blueprint_recommendation_response" as const,
+      configured_model: "gpt-5.6",
+      returned_model: "gpt-5.6-2026-08-07",
+      response_id: "resp_response",
+    };
+    const record = confirmedOpening();
+    const evaluated = evaluateBlueprint(
+      createInitialBlueprintState(record, {
+        planningBaseline: completeBaseline,
+        beneficiaryOutcomes: completeBeneficiary,
+      }),
+      [],
+    );
+    const state = presentRecommendation(evaluated.state, "beneficiary", {
+      ...recommendation,
+      generation_metadata: recommendationGeneration,
+    });
+    const database = new FakeDatabase(record, state);
+    mocks.createAdminSupabaseClient.mockReturnValue(database.client);
+    mocks.interpretRecommendationResponse.mockResolvedValueOnce({
+      outcome: "accepted",
+      acknowledgement: "The decision is saved.",
+      clarification_question: null,
+      disposition: "accept",
+      modification: null,
+      open_confirmation: null,
+      stop: null,
+      generation_metadata: responseGeneration,
+    });
+
+    const saved = await postBlueprintTurn(
+      turnRequest(TURN_KEY, "I accept this recommendation."),
+      routeContext,
+    );
+
+    expect(saved.status).toBe(200);
+    expect(database.blueprintState.generated_responses).toEqual([
+      recommendationGeneration,
+      responseGeneration,
+    ]);
+    expect(database.decisions[0]).toMatchObject({
+      recommendation_generation: recommendationGeneration,
+      response_interpretation_generation: responseGeneration,
+    });
+    const savedPayload = (await saved.json()) as {
+      matter: { blueprintState: BlueprintState; decisions: DecisionRecord[] };
+    };
+    expect(savedPayload.matter.blueprintState.generated_responses).toEqual([
+      recommendationGeneration,
+      responseGeneration,
+    ]);
+    expect(savedPayload.matter.decisions[0]).toMatchObject({
+      recommendation_generation: recommendationGeneration,
+      response_interpretation_generation: responseGeneration,
+    });
   });
 
   it("returns saved focused evidence on retry without reprocessing or duplicating it", async () => {

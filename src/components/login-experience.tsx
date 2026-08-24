@@ -69,70 +69,87 @@ export function LoginExperience({ syntheticMode }: { syntheticMode: boolean }) {
     <main className="auth-shell">
       <section className="auth-panel" aria-labelledby="welcome-title">
         <Brand />
-        <div className="eyebrow">Private student experience</div>
-        <h1 id="welcome-title">Start your estate-planning priorities journey</h1>
-        <p className="lede">
-          A guided, one-question-at-a-time conversation that captures what matters
-          most for your family and your goals before Estate Blueprint recommendations
-          begin.
-        </p>
+        <div className="auth-content">
+          <h1 id="welcome-title">
+            Build an estate plan that protects the people you love.
+          </h1>
+          <p className="lede">
+            Clarify what matters most, make the key planning decisions, and leave
+            with a clear Estate Blueprint designed around your family, priorities,
+            and future.
+          </p>
 
-        <form onSubmit={requestLink} className="auth-form">
-          <label htmlFor="email">Invited email address</label>
-          <input
-            id="email"
-            name="email"
-            type="email"
-            autoComplete="email"
-            required
-            value={email}
-            onChange={(event) => setEmail(event.target.value)}
-            placeholder="name@example.com"
-          />
-          <button className="button button-primary" disabled={busy}>
-            {busy ? "Please wait…" : "Email me a sign-in link"}
-          </button>
-        </form>
+          <form onSubmit={requestLink} className="auth-form">
+            <label htmlFor="email">Email address</label>
+            <input
+              id="email"
+              name="email"
+              type="email"
+              autoComplete="email"
+              required
+              value={email}
+              onChange={(event) => setEmail(event.target.value)}
+              placeholder="name@example.com"
+            />
+            <button className="button button-primary" disabled={busy}>
+              {busy ? "Please wait…" : "Email me a sign-in link"}
+            </button>
+          </form>
 
-        {syntheticMode && (
-          <div className="synthetic-logins" aria-label="Synthetic test access">
-            <span>Local verification only</span>
-            {syntheticUsers.map((user) => (
-              <button
-                key={user.id}
-                className="button button-secondary"
-                onClick={() => syntheticLogin(user.id)}
-                disabled={busy}
-              >
-                {user.label}
-              </button>
-            ))}
-          </div>
-        )}
+          {syntheticMode && (
+            <div className="synthetic-logins" aria-label="Synthetic test access">
+              <span>Local verification only</span>
+              {syntheticUsers.map((user) => (
+                <button
+                  key={user.id}
+                  className="button button-secondary"
+                  onClick={() => syntheticLogin(user.id)}
+                  disabled={busy}
+                >
+                  {user.label}
+                </button>
+              ))}
+            </div>
+          )}
 
-        <p className="status-text" role="status" aria-live="polite">
-          {status}
-        </p>
-        <p className="auth-footnote">
-          Access is limited to invited participants. No application password is
-          collected, and your answers are not treated as a legal filing.
-        </p>
+          <p className="status-text" role="status" aria-live="polite">
+            {status}
+          </p>
+          <p className="auth-footnote">
+            Estate Coordinator provides planning guidance, not legal or tax advice.
+          </p>
+        </div>
       </section>
-      <aside className="auth-aside" aria-label="Experience overview">
-        <div>
-          <span className="aside-number">01</span>
-          <h2>Estate Planning Priorities</h2>
-          <p>One question at a time, with narrative answers and only triggered follow-ups.</p>
-        </div>
-        <div>
-          <span className="aside-number">02</span>
-          <h2>Review your summary</h2>
-          <p>Review and correct the structured opening before it becomes confirmed.</p>
-        </div>
-        <div>
-          <span className="aside-number">03</span>
-          <h2>Continue into your Blueprint</h2>
-          <p>Your last accepted answer is the durable restart point.</p>
+      <aside className="auth-aside" aria-labelledby="steps-title">
+        <div className="auth-aside-inner">
+          <h2 id="steps-title" className="auth-aside-title">
+            Your Estate Plan in 3 Simple Steps
+          </h2>
+          <ol className="auth-steps">
+            <li>
+              <span className="aside-number" aria-hidden="true">01</span>
+              <div>
+                <h3>Tell us what matters.</h3>
+                <p>Focused questions about goals, family, and current planning.</p>
+              </div>
+            </li>
+            <li>
+              <span className="aside-number" aria-hidden="true">02</span>
+              <div>
+                <h3>Make your key decisions.</h3>
+                <p>Clear recommendations and decisions shaped around what matters.</p>
+              </div>
+            </li>
+            <li>
+              <span className="aside-number" aria-hidden="true">03</span>
+              <div>
+                <h3>Get your Estate Blueprint.</h3>
+                <p>
+                  A clear planning blueprint to use with your attorney and advisors.
+                </p>
+              </div>
+            </li>
+          </ol>
         </div>
       </aside>
     </main>
