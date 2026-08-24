@@ -1,24 +1,18 @@
 import { z } from "zod";
 
 import { GeneratedResponseMetadataSchema } from "./generated-response";
+import {
+  CanonicalIntakeStateSchema,
+  createCanonicalIntakeState,
+  OutcomeCodeSchema,
+} from "./intake";
+
+export { OutcomeCodeSchema } from "./intake";
+export type { OutcomeCode } from "./intake";
 
 export const WORKFLOW_VERSION = "EC_MATTER_OPENING_0.4";
 
-export const OutcomeCodeSchema = z.enum([
-  "intended_transfer",
-  "tax_minimization",
-  "asset_protection",
-  "support_for_others",
-  "distribution_control",
-  "incapacity_readiness",
-  "conflict_prevention",
-  "heir_readiness",
-  "plan_alignment",
-  "house_in_order_assurance",
-  "business_charitable_family_legacy",
-  "other",
-]);
-export type OutcomeCode = z.infer<typeof OutcomeCodeSchema>;
+type OutcomeCode = z.infer<typeof OutcomeCodeSchema>;
 
 export const OUTCOME_LABELS: Record<OutcomeCode, string> = {
   intended_transfer: "Intended transfer",
@@ -126,6 +120,7 @@ export const MatterOpeningRecordSchema = z.object({
   missing_contacts: z.array(z.string()),
   other_participants: z.array(ParticipantSchema),
   house_in_order_concern: z.string(),
+  canonical_intake: CanonicalIntakeStateSchema.optional(),
   principal_confirmed: z.enum(["yes", "no"]),
   confirmation_date: z.string(),
   generated_responses: z.array(GeneratedResponseMetadataSchema).optional(),
@@ -245,6 +240,7 @@ export function createInitialRecord(matterId: string): MatterOpeningRecord {
     missing_contacts: [],
     other_participants: [],
     house_in_order_concern: "unknown",
+    canonical_intake: createCanonicalIntakeState(),
     principal_confirmed: "no",
     confirmation_date: "unknown",
     generated_responses: [],

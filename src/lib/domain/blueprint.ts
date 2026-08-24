@@ -679,6 +679,53 @@ export function createInitialBlueprintState(
   );
   const readiness = priorityDetail(record, ["heir_readiness"]);
   const trigger = externalEvidenceTrigger(record);
+  const canonical = record.canonical_intake;
+  const canonicalPlanningBaseline: Partial<PlanningBaseline> =
+    canonical?.financialRange
+      ? {
+          material_assets_range: canonical.financialRange.materialAssetsRange,
+          liabilities_range: canonical.financialRange.liabilitiesRange,
+          expected_inheritance_range:
+            canonical.financialRange.expectedInheritanceRange,
+          lifetime_security_floor: canonical.financialRange.lifetimeSecurityFloor,
+          assets_counted_toward_floor:
+            canonical.financialRange.assetsCountedTowardFloor,
+          retained_control_requirement:
+            canonical.financialRange.retainedControlRequirement,
+          extraordinary_future_obligations:
+            canonical.financialRange.extraordinaryFutureObligations,
+        }
+      : {};
+  const canonicalBeneficiaries = canonical?.goalsFamily?.beneficiaries ?? [];
+  const primaryBeneficiaries = canonicalBeneficiaries
+    .filter((beneficiary) => beneficiary.role === "primary")
+    .map((beneficiary) => beneficiary.nameOrGroup)
+    .join(", ");
+  const substituteBeneficiaries = canonicalBeneficiaries
+    .filter((beneficiary) => beneficiary.role === "substitute")
+    .map((beneficiary) => beneficiary.nameOrGroup)
+    .join(", ");
+  const relativeTreatment = uniqueNonempty(
+    canonicalBeneficiaries.map((beneficiary) => beneficiary.treatment),
+  ).join("; ");
+  const canonicalProtection = uniqueNonempty([
+    ...canonicalBeneficiaries.flatMap(
+      (beneficiary) => beneficiary.protectionNeeds,
+    ),
+    canonical?.goalsFamily?.materialCircumstances,
+  ]).join("; ");
+  const canonicalReadiness = uniqueNonempty(
+    canonicalBeneficiaries.map((beneficiary) => beneficiary.readinessNotes),
+  ).join("; ");
+  const team = canonical?.teamContinuity;
+  const trustedPeople = team?.contacts
+    .filter((contact) => contact.primaryOrBackup !== "backup")
+    .map((contact) => `${contact.name} (${contact.role})`)
+    .join("; ");
+  const backups = team?.contacts
+    .filter((contact) => contact.primaryOrBackup === "backup")
+    .map((contact) => `${contact.name} (${contact.role})`)
+    .join("; ");
 
   return BlueprintStateSchema.parse({
     workflow_version: BLUEPRINT_WORKFLOW_VERSION,
@@ -693,6 +740,7 @@ export function createInitialBlueprintState(
       assets_counted_toward_floor: null,
       retained_control_requirement: null,
       extraordinary_future_obligations: null,
+      ...canonicalPlanningBaseline,
       ...seed.planningBaseline,
     },
     planning_synthesis: null,
@@ -706,25 +754,29 @@ export function createInitialBlueprintState(
       confirmation_dependency: null,
     },
     beneficiary_outcomes: {
-      intended_beneficiaries: known(record.people_and_interests_snapshot)
-        ? record.people_and_interests_snapshot
-        : null,
-      substitute_beneficiaries: null,
-      relative_treatment: null,
-      protection_needs: protection,
-      stewardship_objectives: priorityDetail(record, [
-        "distribution_control",
-        "heir_readiness",
-      ]),
-      special_treatment: specialAssets,
+      intended_beneficiaries:
+        primaryBeneficiaries ||
+        (known(record.people_and_interests_snapshot)
+          ? record.people_and_interests_snapshot
+          : null),
+      substitute_beneficiaries: substituteBeneficiaries || null,
+      relative_treatment: relativeTreatment || null,
+      protection_needs: canonicalProtection || protection,
+      stewardship_objectives:
+        canonicalReadiness ||
+        priorityDetail(record, ["distribution_control", "heir_readiness"]),
+      special_treatment:
+        canonical?.goalsFamily?.materialCircumstances || specialAssets,
       ...seed.beneficiaryOutcomes,
     },
     fiduciary_continuity_outcomes: {
-      trusted_people_or_institutions: null,
-      backups: null,
-      essential_responsibilities: responsibilities,
-      special_assets_or_purposes: specialAssets,
-      beneficiary_readiness: readiness,
+      trusted_people_or_institutions: trustedPeople || null,
+      backups: backups || null,
+      essential_responsibilities:
+        team?.continuityResponsibilities.join("; ") || responsibilities,
+      special_assets_or_purposes:
+        team?.specialAssetsOrPurposes.join("; ") || specialAssets,
+      beneficiary_readiness: team?.readinessPlan || readiness,
       ...seed.fiduciaryContinuityOutcomes,
     },
     source_context: {
@@ -1333,7 +1385,11 @@ function mergePatch<T extends Record<string, string | null>>(
   current: T,
   patch: Partial<T> | null,
 ) {
-  return patch ? { ...current, ...patch } : current;
+  if (!patch) return current;
+  const answeredEntries = Object.entries(patch).filter(
+    (entry): entry is [string, string] => entry[1] !== null && entry[1] !== undefined,
+  );
+  return { ...current, ...Object.fromEntries(answeredEntries) } as T;
 }
 
 export function applyBlueprintAnswer(

@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { createInitialRecord, MatterOpeningRecord } from "./matter-opening";
+import { createCanonicalIntakeState } from "./intake";
 import {
   applyBlueprintAnswer,
   applyEvidenceTreatment,
@@ -176,6 +177,72 @@ describe("Estate Blueprint internal gates 1-5", () => {
       .toContain("lifetime security");
     expect(JSON.stringify(result.state.interaction)).not.toContain("material assets");
     expect(JSON.stringify(result.state.interaction)).not.toContain("liabilities");
+  });
+
+  it("does not erase prior planning answers when omitted patch fields serialize as null", () => {
+    const state = evaluateBlueprint(
+      createInitialBlueprintState(confirmedOpening(), {
+        planningBaseline: {
+          ...completeBaseline,
+          lifetime_security_floor: null,
+        },
+      }),
+      [],
+    ).state;
+
+    const answered = applyBlueprintAnswer(
+      state,
+      acceptedPatch({
+        planning_baseline: {
+          material_assets_range: null,
+          liabilities_range: null,
+          expected_inheritance_range: null,
+          lifetime_security_floor: "$5 million",
+          assets_counted_toward_floor: null,
+          retained_control_requirement: null,
+          extraordinary_future_obligations: null,
+        },
+        beneficiary_outcomes: null,
+        fiduciary_continuity_outcomes: null,
+      }),
+    ).state;
+
+    expect(answered.planning_baseline).toEqual(completeBaseline);
+    expect(evaluateBlueprint(answered, []).state.current_gate).toBe(4);
+  });
+
+  it("seeds all planning-range fields from canonical intake without another question", () => {
+    const canonical = createCanonicalIntakeState();
+    canonical.currentSection = "planning_summary";
+    canonical.completedSections = [
+      "goals_family",
+      "planning_context",
+      "team_continuity",
+      "financial_range",
+    ];
+    canonical.financialRange = {
+      materialAssetsRange: completeBaseline.material_assets_range!,
+      liabilitiesRange: completeBaseline.liabilities_range!,
+      expectedInheritanceRange: completeBaseline.expected_inheritance_range!,
+      lifetimeSecurityFloor: completeBaseline.lifetime_security_floor!,
+      assetsCountedTowardFloor: completeBaseline.assets_counted_toward_floor!,
+      retainedControlRequirement: completeBaseline.retained_control_requirement!,
+      extraordinaryFutureObligations:
+        completeBaseline.extraordinary_future_obligations!,
+    };
+    const record = confirmedOpening({ canonical_intake: canonical });
+
+    const result = evaluateBlueprint(createInitialBlueprintState(record), []);
+
+    expect(result.state.planning_baseline).toEqual(completeBaseline);
+    expect(result.state.current_gate).toBe(4);
+    expect(result.state.interaction).toMatchObject({
+      kind: "question",
+      key: "beneficiary_outcomes",
+    });
+    expect(JSON.stringify(result.state.interaction)).not.toContain(
+      "planning range",
+    );
   });
 
   it("requires the expected-inheritance range for a confirmed external arrangement and preserves unknown", () => {
