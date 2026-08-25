@@ -49,7 +49,7 @@ function reconciledSave() {
   }).postStructuredIntakeWithReconciliation;
 }
 
-describe("structured financial save reconciliation", () => {
+describe("structured intake save reconciliation", () => {
   it("automatically replays an ambiguous transport failure with the identical operation", async () => {
     const save = reconciledSave();
     expect(save).toBeTypeOf("function");
@@ -68,20 +68,40 @@ describe("structured financial save reconciliation", () => {
     expect(new Set(bodies)).toEqual(new Set([JSON.stringify(submission)]));
   });
 
-  it("automatically reconciles one ambiguous server response without user resubmission", async () => {
-    const save = reconciledSave();
-    expect(save).toBeTypeOf("function");
-    if (!save) return;
-    const bodies: string[] = [];
-    const request = vi.fn(async (_input: RequestInfo | URL, init?: RequestInit) => {
-      bodies.push(String(init?.body));
-      return new Response("{}", { status: bodies.length === 1 ? 502 : 200 });
-    });
+  it.each([
+    "goals_family",
+    "planning_context",
+    "team_continuity",
+    "financial_range",
+  ] as const)(
+    "automatically reconciles one ambiguous %s response without user resubmission",
+    async (section) => {
+      const save = reconciledSave();
+      expect(save).toBeTypeOf("function");
+      if (!save) return;
+      const sectionSubmission = {
+        ...submission,
+        section,
+      } as StructuredIntakeSubmission;
+      const bodies: string[] = [];
+      const request = vi.fn(async (_input: RequestInfo | URL, init?: RequestInit) => {
+        bodies.push(String(init?.body));
+        return new Response("{}", { status: bodies.length === 1 ? 502 : 200 });
+      });
 
-    const response = await save("/api/matters/1/intake", submission, request);
+      const response = await save(
+        "/api/matters/1/intake",
+        sectionSubmission,
+        request,
+      );
 
-    expect(response.ok).toBe(true);
-    expect(request).toHaveBeenCalledTimes(2);
-    expect(bodies[0]).toBe(bodies[1]);
-  });
+      expect(response.ok).toBe(true);
+      expect(request).toHaveBeenCalledTimes(2);
+      expect(bodies[0]).toBe(bodies[1]);
+      expect(JSON.parse(bodies[0])).toMatchObject({
+        operationId: submission.operationId,
+        section,
+      });
+    },
+  );
 });

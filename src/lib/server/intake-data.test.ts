@@ -87,6 +87,34 @@ describe("structured intake persistence", () => {
     expect(retry.matter.record).toEqual(first.matter.record);
   });
 
+  it("does not duplicate non-financial advancement when the committed operation is replayed", async () => {
+    await acknowledgeBeta(OWNER_ID);
+    const matterId = await createMatter(OWNER_ID);
+    const submission = goalsSubmission();
+
+    const committed = await submitStructuredIntake({
+      userId: OWNER_ID,
+      matterId,
+      submission,
+    });
+    const reconciled = await submitStructuredIntake({
+      userId: OWNER_ID,
+      matterId,
+      submission,
+    });
+
+    expect(committed.receipt).toMatchObject({
+      operationId: submission.operationId,
+      revision: 1,
+      status: "committed",
+    });
+    expect(reconciled.receipt).toEqual(committed.receipt);
+    expect(reconciled.matter.workflowState).toEqual(committed.matter.workflowState);
+    expect(reconciled.matter.record.canonical_intake?.currentSection).toBe(
+      "planning_context",
+    );
+  });
+
   it("restores every structured financial input and calculated result after save and resume", async () => {
     await acknowledgeBeta(OWNER_ID);
     const matterId = await createMatter(OWNER_ID);

@@ -91,6 +91,12 @@ export function MatterExperience({ matterId }: { matterId: string }) {
   const pendingIntakeOperations = useRef<Partial<Record<EditableSection, string>>>({});
   const surfaceRef = useRef<HTMLElement>(null);
 
+  function revealActiveSurface() {
+    requestAnimationFrame(() =>
+      surfaceRef.current?.scrollIntoView({ block: "start" }),
+    );
+  }
+
   useEffect(() => {
     let active = true;
     void loadMatter(matterId)
@@ -126,22 +132,16 @@ export function MatterExperience({ matterId }: { matterId: string }) {
     try {
       const url = `/api/matters/${matterId}/intake`;
       const idempotentSubmission = { ...submission, operationId };
-      const response =
-        submission.section === "financial_range"
-          ? await postStructuredIntakeWithReconciliation(url, idempotentSubmission)
-          : await fetch(url, {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify(idempotentSubmission),
-            });
+      const response = await postStructuredIntakeWithReconciliation(
+        url,
+        idempotentSubmission,
+      );
       const payload = await responseJson<{ matter: MatterView }>(response, "This section could not be saved. Your entries remain here.");
       delete pendingIntakeOperations.current[submission.section];
       setMatter(payload.matter);
       setEditSection(null);
       setSaveStatus(`Saved ${new Date(payload.matter.savedAt).toLocaleTimeString()}`);
-      requestAnimationFrame(() =>
-        surfaceRef.current?.scrollIntoView({ block: "start" }),
-      );
+      revealActiveSurface();
     } catch (reason) {
       setSaveStatus("Not saved — entries retained");
       setError(
@@ -165,6 +165,7 @@ export function MatterExperience({ matterId }: { matterId: string }) {
       const payload = await responseJson<{ matter: MatterView }>(startResponse, "Blueprint decisions could not be prepared.");
       setMatter(payload.matter);
       setSaveStatus("Confirmed and saved");
+      revealActiveSurface();
     } catch (reason) {
       setSaveStatus("Confirmation paused — retry available");
       setError(reason instanceof Error ? reason.message : "The Planning Summary could not be confirmed.");
@@ -199,6 +200,7 @@ export function MatterExperience({ matterId }: { matterId: string }) {
       pendingOperation.current = null;
       setMatter(payload.matter);
       setSaveStatus("Decisions saved");
+      revealActiveSurface();
     } catch (reason) {
       setSaveStatus("Not saved — selections retained");
       setError(reason instanceof Error ? reason.message : "Your Blueprint decisions could not be saved.");
@@ -272,6 +274,7 @@ export function MatterExperience({ matterId }: { matterId: string }) {
       setMatter(payload.matter);
       setFinalReviewCorrecting(false);
       setSaveStatus("Blueprint generated and saved");
+      revealActiveSurface();
     } catch (reason) {
       setSaveStatus("Generation paused — retry available");
       setError(reason instanceof Error ? reason.message : "The Estate Blueprint could not be generated.");

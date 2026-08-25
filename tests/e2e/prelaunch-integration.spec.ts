@@ -75,10 +75,12 @@ test("transport failure preserves structured entries and restores retry controls
   await page.getByRole("checkbox", { name: /I understand the process/ }).check();
   await page.getByRole("button", { name: "Start my estate plan" }).click();
   await fillGoals(page);
-  let intercepted = false;
+  const operationIds: string[] = [];
+  let intercepted = 0;
   await page.route("**/api/matters/*/intake", async (route) => {
-    if (!intercepted) {
-      intercepted = true;
+    operationIds.push(route.request().postDataJSON().operationId);
+    if (intercepted < 2) {
+      intercepted += 1;
       await route.abort("failed");
       return;
     }
@@ -88,8 +90,12 @@ test("transport failure preserves structured entries and restores retry controls
   await expect(page.getByText("This section could not be saved. Your entries remain here.")).toBeVisible();
   await expect(page.getByLabel("What would a successful plan accomplish?")).toHaveValue("Protect my spouse and children.");
   await expect(page.getByRole("button", { name: "Save and continue" })).toBeEnabled();
+  expect(operationIds).toHaveLength(2);
+  expect(operationIds[1]).toBe(operationIds[0]);
   await page.getByRole("button", { name: "Save and continue" }).click();
   await expect(page.getByRole("heading", { name: "Current plan and planning context" })).toBeVisible();
+  expect(operationIds).toHaveLength(3);
+  expect(new Set(operationIds).size).toBe(1);
 });
 
 test("malformed evidence response restores evidence controls", async ({ page }) => {

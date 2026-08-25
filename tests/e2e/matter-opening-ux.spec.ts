@@ -115,16 +115,10 @@ test("reconciles an ambiguous first save without creating a second operation", a
   });
 
   await page.getByRole("button", { name: "Save and continue" }).click();
-  await expect(page.locator(".save-state")).toContainText(
-    "Not saved — entries retained",
-  );
-  await expect(page.getByLabel("What would a successful plan accomplish?")).toHaveValue(
-    "Protect my spouse and provide for our children.",
-  );
-  await page.getByRole("button", { name: "Save and continue" }).click();
   await expect(
     page.getByRole("heading", { name: "Current plan and planning context" }),
-  ).toBeVisible();
+  ).toBeInViewport();
+  await expect(page.locator(".save-state")).toContainText("Saved");
   expect(operationIds).toHaveLength(2);
   expect(operationIds[1]).toBe(operationIds[0]);
 });

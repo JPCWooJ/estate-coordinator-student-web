@@ -26,6 +26,28 @@ async function saveSection(page: Page) {
   await expect(page.locator(".save-state")).toContainText("Saved");
 }
 
+async function expectPrimaryHeadingBelowStickyProgress(
+  page: Page,
+  name: string,
+) {
+  const heading = page.getByRole("heading", { name, exact: true });
+  await expect(heading).toBeInViewport();
+  const metrics = await heading.evaluate((element) => {
+    const headingRect = element.getBoundingClientRect();
+    const progressRect = document
+      .querySelector(".rescue-progress")
+      ?.getBoundingClientRect();
+    return {
+      headingTop: headingRect.top,
+      headingBottom: headingRect.bottom,
+      stickyBottom: Math.max(0, progressRect?.bottom ?? 0),
+      viewportHeight: window.innerHeight,
+    };
+  });
+  expect(metrics.headingTop).toBeGreaterThanOrEqual(metrics.stickyBottom);
+  expect(metrics.headingBottom).toBeLessThanOrEqual(metrics.viewportHeight);
+}
+
 test("audited ten-state rescue journey saves once, reuses answers, and generates the Blueprint", async ({
   page,
 }) => {
@@ -204,15 +226,22 @@ test("audited ten-state rescue journey saves once, reuses answers, and generates
   await expect(page.getByRole("heading", { name: "Your Planning Summary" })).toBeVisible();
 
   await page.getByRole("button", { name: "Confirm Planning Summary" }).click();
-  await expect(page.getByRole("heading", { name: "Choose the direction for your Estate Blueprint" })).toBeVisible();
+  await expectPrimaryHeadingBelowStickyProgress(
+    page,
+    "Choose the direction for your Estate Blueprint",
+  );
+  await expect(page.locator(".recommendation-card h3").first()).toBeInViewport();
   await expect(page.getByText(/To establish the planning range/)).toHaveCount(0);
   await expect(page.getByText(/approximate range of liabilities/)).toHaveCount(0);
   await page.getByRole("button", { name: "Save decisions and continue" }).click();
 
-  await expect(page.getByRole("heading", { name: "Review your target-state design" })).toBeVisible();
+  await expectPrimaryHeadingBelowStickyProgress(
+    page,
+    "Review your target-state design",
+  );
   await page.getByRole("button", { name: "Confirm and generate Estate Blueprint" }).click();
-  await expect(page.getByRole("heading", { name: "Estate Blueprint", exact: true })).toBeVisible();
-  await expect(page.getByRole("link", { name: /Download PDF/i })).toBeVisible();
+  await expectPrimaryHeadingBelowStickyProgress(page, "Estate Blueprint");
+  await expect(page.getByRole("link", { name: /Download PDF/i })).toBeInViewport();
   expect(browserErrors).toEqual([]);
 });
 
