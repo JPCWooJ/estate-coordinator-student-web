@@ -165,3 +165,29 @@ test("returning workspace offers one truthful resume action without internal lan
     /student beta|controlled beta|private student|cohort|internal test|planning foundation/i,
   );
 });
+
+test("workspace failures do not expose the internal matter label", async ({ page }) => {
+  await reset(page);
+  await signIn(page);
+
+  await page.route("**/api/matters", async (route) => {
+    if (route.request().method() === "POST") {
+      await route.fulfill({
+        status: 500,
+        contentType: "application/json",
+        body: JSON.stringify({}),
+      });
+      return;
+    }
+    await route.continue();
+  });
+  await page.getByRole("checkbox", { name: /I understand the process/ }).check();
+  await page.getByRole("button", { name: "Start my estate plan" }).click();
+  await expect(page.locator("main").getByRole("alert")).toHaveText(
+    "Your planning workspace could not be started.",
+  );
+
+  await page.unroute("**/api/matters");
+  await page.goto("/matter/not-a-real-workspace");
+  await expect(page.getByRole("status")).toHaveText("Planning workspace not found.");
+});

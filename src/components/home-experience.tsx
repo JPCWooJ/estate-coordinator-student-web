@@ -29,7 +29,7 @@ async function fetchHomePayload(): Promise<{
     };
   }
   const data = await mattersResponse.json();
-  if (!mattersResponse.ok) throw new Error("Matter home request failed.");
+  if (!mattersResponse.ok) throw new Error("Your planning workspace could not be loaded.");
   return { session, matters: data.matters };
 }
 
@@ -77,7 +77,7 @@ export function HomeExperience() {
     const data = await response.json();
     setBusy(false);
     if (response.ok) router.push(`/matter/${data.id}`);
-    else setError(data.error ?? "The matter could not be started.");
+    else setError(data.error ?? "Your planning workspace could not be started.");
   }
 
   if (!session?.user) {
