@@ -12,9 +12,9 @@ async function openMatterOpening(page: Page) {
       ).status,
     ),
   ).toBe(200);
-  await page.getByRole("button", { name: "Use synthetic student A" }).click();
+  await page.getByRole("button", { name: "Continue as Profile A" }).click();
   await page.getByRole("checkbox", { name: /I understand the process/ }).check();
-  await page.getByRole("button", { name: "Start my Estate Blueprint" }).click();
+  await page.getByRole("button", { name: "Start my estate plan" }).click();
 }
 
 async function saveGoals(page: Page) {
