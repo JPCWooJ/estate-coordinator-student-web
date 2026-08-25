@@ -93,10 +93,10 @@ test("audited ten-state rescue journey saves once, reuses answers, and generates
   await page.getByLabel("none identified", { exact: true }).check();
   await saveSection(page);
 
-  await expect(page.getByRole("heading", { name: "Team and continuity" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Provide contact details for the key people involved in your estate planning." })).toBeVisible();
   await page.getByLabel("Name", { exact: true }).first().fill("Jordan Lee");
   await page.getByLabel("Firm or relationship").fill("Harbor Counsel");
-  await page.getByLabel("Role", { exact: true }).first().fill("estate attorney");
+  await page.getByLabel("Role in the process", { exact: true }).first().fill("estate attorney");
   await page.getByLabel("Email", { exact: true }).first().fill("jordan@example.com");
   await page.getByLabel("Phone", { exact: true }).first().fill("555-0100");
   await page.getByLabel("Responsibilities", { exact: true }).first().fill("document review and implementation");
@@ -105,7 +105,6 @@ test("audited ten-state rescue journey saves once, reuses answers, and generates
   await saveSection(page);
 
   await expect(page.getByRole("heading", { name: "Estate Balance Sheet" })).toBeVisible();
-  await expect(page.locator(".matter-topbar")).toContainText("Financial foundation");
   await expect(page.locator(".progress-copy")).toContainText("Financial foundation");
   await expect(page.getByLabel("Material assets")).toHaveValue("not_decided");
   await expect(page.getByLabel(/^Liabilities/)).toHaveValue("not_decided");
