@@ -114,6 +114,7 @@ test("Blueprint clarification appears once as the active question", async ({ pag
 
 test("an expired session returns a matter route cleanly to sign-in", async ({ page }) => {
   const id = await seed(page, "zero_turn");
+  await page.context().clearCookies();
   await page.route("**/api/session", async (route) => {
     await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ user: null, betaAcknowledged: false }) });
   });
