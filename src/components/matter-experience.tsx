@@ -64,6 +64,8 @@ export function MatterExperience({ matterId }: { matterId: string }) {
   const [editSection, setEditSection] = useState<EditableSection | null>(null);
   const [decisionInputs, setDecisionInputs] = useState<Record<string, RecommendationDecisionSubmission>>({});
   const pendingOperation = useRef<string | null>(null);
+  const pendingIntakeOperations = useRef<Partial<Record<EditableSection, string>>>({});
+  const surfaceRef = useRef<HTMLElement>(null);
 
   useEffect(() => {
     let active = true;
@@ -94,16 +96,23 @@ export function MatterExperience({ matterId }: { matterId: string }) {
     setBusy(true);
     setError("");
     setSaveStatus("Syncing…");
+    const operationId =
+      pendingIntakeOperations.current[submission.section] ?? submission.operationId;
+    pendingIntakeOperations.current[submission.section] = operationId;
     try {
       const response = await fetch(`/api/matters/${matterId}/intake`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(submission),
+        body: JSON.stringify({ ...submission, operationId }),
       });
       const payload = await responseJson<{ matter: MatterView }>(response, "This section could not be saved. Your entries remain here.");
+      delete pendingIntakeOperations.current[submission.section];
       setMatter(payload.matter);
       setEditSection(null);
       setSaveStatus(`Saved ${new Date(payload.matter.savedAt).toLocaleTimeString()}`);
+      requestAnimationFrame(() =>
+        surfaceRef.current?.scrollIntoView({ block: "start" }),
+      );
     } catch (reason) {
       setSaveStatus("Not saved — entries retained");
       setError(
@@ -256,7 +265,7 @@ export function MatterExperience({ matterId }: { matterId: string }) {
       <AppHeader email={email} />
       <main className="matter-main rescue-main">
         <div className="matter-topbar">
-          <div><Link href="/home" className="back-link">← Your planning workspace</Link><h1>{matter.name}</h1><p>{matter.stepLabel}</p></div>
+          <div><Link href="/home" className="back-link">← Your planning workspace</Link><h1>{matter.name}</h1></div>
           <span className="save-state" role="status" aria-live="polite"><span aria-hidden="true" /> {saveStatus}</span>
         </div>
         <div className="progress-block rescue-progress">
@@ -264,7 +273,7 @@ export function MatterExperience({ matterId }: { matterId: string }) {
           <div className="progress-track" role="progressbar" aria-label="Estate Blueprint progress" aria-valuemin={0} aria-valuemax={7} aria-valuenow={step}><span style={{ width: `${progress}%` }} /></div>
         </div>
 
-        <section className="rescue-surface" aria-live="polite">
+        <section ref={surfaceRef} className="rescue-surface" aria-live="polite">
           {interaction?.kind === "blueprint" && matter.blueprint?.document ? (
             <BlueprintPreview document={matter.blueprint.document} downloadHref={`/api/matters/${matterId}/blueprint/pdf`} />
           ) : interaction?.kind === "generating" ? (

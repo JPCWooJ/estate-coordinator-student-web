@@ -65,6 +65,7 @@ export type BeneficiaryEntry = z.infer<typeof BeneficiaryEntrySchema>;
 
 export const TeamContactSchema = z.object({
   name: z.string().trim().min(1).max(120),
+  address: z.string().trim().max(240).optional(),
   firmOrRelationship: z.string().trim().max(160),
   role: z.string().trim().min(1).max(160),
   email: z.union([z.string().trim().email(), z.literal("")]),

@@ -295,4 +295,40 @@ describe("canonical grouped intake", () => {
     ).toBe("answered");
     expect(intakeSectionForRecord(result.record)).not.toBe("financial_range");
   });
+
+  it("preserves every structured contact field in canonical state", () => {
+    const result = applyStructuredIntake(
+      createInitialRecord(MATTER_ID),
+      submission({
+        section: "team_continuity",
+        values: {
+          contacts: [
+            {
+              name: "Jordan Lee",
+              address: "100 Main Street, Miami, FL",
+              firmOrRelationship: "Harbor Counsel",
+              role: "estate attorney",
+              email: "jordan@example.com",
+              phone: "555-0100",
+              primaryOrBackup: "adviser",
+              responsibilities: "document review and implementation",
+            },
+          ],
+          missingProfessionalRoles: [],
+          continuityResponsibilities: ["household support"],
+          specialAssetsOrPurposes: [],
+          readinessPlan: "not decided",
+        },
+      }),
+      NOW,
+    );
+
+    expect(result.record.canonical_intake?.teamContinuity?.contacts).toEqual([
+      expect.objectContaining({
+        name: "Jordan Lee",
+        address: "100 Main Street, Miami, FL",
+        role: "estate attorney",
+      }),
+    ]);
+  });
 });

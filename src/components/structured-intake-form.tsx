@@ -40,6 +40,22 @@ function Field({ label, children, hint }: { label: string; children: React.React
   );
 }
 
+type ContactDraft = TeamContact & { rowId: number };
+
+function emptyContact(rowId: number): ContactDraft {
+  return {
+    rowId,
+    name: "",
+    address: "",
+    firmOrRelationship: "",
+    role: "",
+    email: "",
+    phone: "",
+    primaryOrBackup: "adviser",
+    responsibilities: "",
+  };
+}
+
 export function StructuredIntakeForm({
   section,
   canonical,
@@ -57,6 +73,42 @@ export function StructuredIntakeForm({
   const goals = canonical.goalsFamily;
   const context = canonical.planningContext;
   const team = canonical.teamContinuity;
+  const [contactDrafts, setContactDrafts] = useState<ContactDraft[]>(() =>
+    team?.contacts.length
+      ? team.contacts.map((contact, index) => ({
+          ...contact,
+          address: contact.address ?? "",
+          rowId: index + 1,
+        }))
+      : [emptyContact(1)],
+  );
+
+  function updateContact<K extends keyof TeamContact>(
+    rowId: number,
+    field: K,
+    value: TeamContact[K],
+  ) {
+    setContactDrafts((current) =>
+      current.map((contact) =>
+        contact.rowId === rowId ? { ...contact, [field]: value } : contact,
+      ),
+    );
+  }
+
+  function addContact() {
+    setContactDrafts((current) => {
+      const nextId = Math.max(...current.map((contact) => contact.rowId), 0) + 1;
+      return [...current, emptyContact(nextId)];
+    });
+  }
+
+  function removeContact(rowId: number) {
+    setContactDrafts((current) =>
+      current.length === 1
+        ? current
+        : current.filter((contact) => contact.rowId !== rowId),
+    );
+  }
 
   if (section === "financial_range") {
     return (
@@ -132,26 +184,21 @@ export function StructuredIntakeForm({
         },
       };
     } else {
-      const contacts: TeamContact[] = [{
-        name: text(data, "contactName"),
-        firmOrRelationship: text(data, "contactFirm"),
-        role: text(data, "contactRole"),
-        email: text(data, "contactEmail"),
-        phone: text(data, "contactPhone"),
-        primaryOrBackup: "adviser" as const,
-        responsibilities: text(data, "contactResponsibilities"),
-      }];
-      const backupName = text(data, "backupName");
-      if (backupName) {
-        contacts.push({
-          name: backupName,
-          firmOrRelationship: text(data, "backupRelationship"),
-          role: text(data, "backupRole", "backup decision-maker"),
-          email: text(data, "backupEmail"),
-          phone: text(data, "backupPhone"),
-          primaryOrBackup: "backup",
-          responsibilities: text(data, "backupResponsibilities"),
-        });
+      const contacts: TeamContact[] = contactDrafts.map(
+        (contact) => ({
+          name: contact.name.trim(),
+          address: contact.address?.trim(),
+          firmOrRelationship: contact.firmOrRelationship.trim(),
+          role: contact.role.trim(),
+          email: contact.email.trim(),
+          phone: contact.phone.trim(),
+          primaryOrBackup: contact.primaryOrBackup,
+          responsibilities: contact.responsibilities.trim(),
+        }),
+      );
+      if (contacts.some((contact) => !contact.name || !contact.role)) {
+        setLocalError("Provide a name and role for each person, or remove the empty entry.");
+        return;
       }
       const continuityResponsibilities = checked(data, "continuityResponsibilities");
       if (!continuityResponsibilities.length) {
@@ -178,7 +225,12 @@ export function StructuredIntakeForm({
     <form className="structured-intake" onSubmit={submit} key={section}>
       {section === "goals_family" ? (
         <>
-          <div className="eyebrow">1 of 7 · Planning intake</div>
+          <dl className="intake-orientation" aria-label="What to expect">
+            <div><dt>Time</dt><dd>About 10–15 minutes</dd></div>
+            <div><dt>Helpful now</dt><dd>Family names, current-plan timing, contacts, and broad financial figures</dd></div>
+            <div><dt>You receive</dt><dd>A Planning Summary and Estate Blueprint</dd></div>
+          </dl>
+          <p className="active-prompt-label">Next Question</p>
           <h2>Goals, family, and beneficiary intent</h2>
           <p>Rank the outcomes that matter most, then identify who the plan should benefit or protect.</p>
           <div className="intake-grid three-column">
@@ -216,7 +268,7 @@ export function StructuredIntakeForm({
         </>
       ) : section === "planning_context" ? (
         <>
-          <div className="eyebrow">2 of 7 · Planning intake</div>
+          <p className="active-prompt-label">Next Question</p>
           <h2>Current plan and planning context</h2>
           <p>Group the plan facts, timing, locations, and material complexity in one place.</p>
           <div className="intake-grid">
@@ -234,11 +286,28 @@ export function StructuredIntakeForm({
         </>
       ) : (
         <>
-          <div className="eyebrow">3 of 7 · Planning intake</div>
-          <h2>Team and continuity</h2>
-          <p>Provide contact details for the key people involved in your estate planning.</p>
-          <fieldset className="intake-group"><legend>Primary adviser or participant</legend><div className="intake-grid"><Field label="Name"><input name="contactName" defaultValue={team?.contacts[0]?.name} required /></Field><Field label="Firm or relationship"><input name="contactFirm" defaultValue={team?.contacts[0]?.firmOrRelationship} /></Field><Field label="Role"><input name="contactRole" defaultValue={team?.contacts[0]?.role} required /></Field><Field label="Email"><input type="email" name="contactEmail" defaultValue={team?.contacts[0]?.email} /></Field><Field label="Phone"><input name="contactPhone" defaultValue={team?.contacts[0]?.phone} /></Field><Field label="Responsibilities"><input name="contactResponsibilities" defaultValue={team?.contacts[0]?.responsibilities} /></Field></div></fieldset>
-          <fieldset className="intake-group"><legend>Backup, if known</legend><div className="intake-grid"><Field label="Name"><input name="backupName" defaultValue={team?.contacts.find((item) => item.primaryOrBackup === "backup")?.name} /></Field><Field label="Relationship"><input name="backupRelationship" defaultValue={team?.contacts.find((item) => item.primaryOrBackup === "backup")?.firmOrRelationship} /></Field><Field label="Role"><input name="backupRole" defaultValue={team?.contacts.find((item) => item.primaryOrBackup === "backup")?.role} /></Field><Field label="Email"><input type="email" name="backupEmail" defaultValue={team?.contacts.find((item) => item.primaryOrBackup === "backup")?.email} /></Field><Field label="Phone"><input name="backupPhone" defaultValue={team?.contacts.find((item) => item.primaryOrBackup === "backup")?.phone} /></Field><Field label="Responsibilities"><input name="backupResponsibilities" defaultValue={team?.contacts.find((item) => item.primaryOrBackup === "backup")?.responsibilities} /></Field></div></fieldset>
+          <p className="active-prompt-label">Next Question</p>
+          <h2>Provide contact details for the key people involved in your estate planning.</h2>
+          <p>This might include attorneys, tax or financial professionals, assistants, trusted family members, or anyone else who should know what to do.</p>
+          <div className="contact-entry-list">
+            {contactDrafts.map((contact, index) => (
+              <fieldset className="contact-entry" key={contact.rowId}>
+                <legend>Person {index + 1}</legend>
+                <div className="intake-grid">
+                  <Field label="Name"><input value={contact.name} onChange={(event) => updateContact(contact.rowId, "name", event.target.value)} required /></Field>
+                  <Field label="Address"><input value={contact.address ?? ""} onChange={(event) => updateContact(contact.rowId, "address", event.target.value)} /></Field>
+                  <Field label="Email"><input type="email" value={contact.email} onChange={(event) => updateContact(contact.rowId, "email", event.target.value)} /></Field>
+                  <Field label="Phone"><input value={contact.phone} onChange={(event) => updateContact(contact.rowId, "phone", event.target.value)} /></Field>
+                  <Field label="Role in the process"><input value={contact.role} onChange={(event) => updateContact(contact.rowId, "role", event.target.value)} required /></Field>
+                  <Field label="Firm or relationship"><input value={contact.firmOrRelationship} onChange={(event) => updateContact(contact.rowId, "firmOrRelationship", event.target.value)} /></Field>
+                  <Field label="Contact type"><select value={contact.primaryOrBackup} onChange={(event) => updateContact(contact.rowId, "primaryOrBackup", event.target.value as TeamContact["primaryOrBackup"])}><option value="adviser">Adviser</option><option value="participant">Participant</option><option value="primary">Primary decision-maker</option><option value="backup">Backup decision-maker</option></select></Field>
+                  <Field label="Responsibilities"><input value={contact.responsibilities} onChange={(event) => updateContact(contact.rowId, "responsibilities", event.target.value)} /></Field>
+                </div>
+                {contactDrafts.length > 1 ? <button type="button" className="contact-remove" onClick={() => removeContact(contact.rowId)}>Remove person</button> : null}
+              </fieldset>
+            ))}
+          </div>
+          <button type="button" className="button button-secondary contact-add" onClick={addContact}>Add another person</button>
           <fieldset className="check-grid"><legend>Professional roles still needed</legend>{["estate-planning attorney", "CPA or tax adviser", "financial adviser", "insurance adviser", "professional fiduciary", "none"].map((item) => <label key={item}><input type="checkbox" name="missingProfessionalRoles" value={item} defaultChecked={team?.missingProfessionalRoles.includes(item)} /> {item}</label>)}</fieldset>
           <fieldset className="check-grid"><legend>Responsibilities that must continue</legend>{["household support", "bill payment", "investment oversight", "business management", "property management", "digital access"].map((item) => <label key={item}><input type="checkbox" name="continuityResponsibilities" value={item} defaultChecked={team ? team.continuityResponsibilities.includes(item) : item === "household support"} /> {item}</label>)}</fieldset>
           <fieldset className="check-grid"><legend>Special assets or purposes</legend>{["business", "real estate", "digital assets", "charitable purpose", "none"].map((item) => <label key={item}><input type="checkbox" name="specialAssetsOrPurposes" value={item} defaultChecked={team?.specialAssetsOrPurposes.includes(item)} /> {item}</label>)}</fieldset>
