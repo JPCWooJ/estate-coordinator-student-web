@@ -422,35 +422,6 @@ h2 {
   font-size: clamp(2.3rem, 6vw, 3.55rem);
 }
 
-.notice-copy {
-  display: grid;
-  max-width: 70ch;
-  gap: 14px;
-  color: var(--muted);
-  line-height: 1.65;
-}
-
-.notice-copy p,
-.notice-copy ul {
-  margin-bottom: 0;
-}
-
-.notice-copy ul {
-  display: grid;
-  gap: 10px;
-  margin-top: 4px;
-  padding: 20px 22px 20px 42px;
-  border: 1px solid var(--line);
-  border-radius: var(--radius-md);
-  color: var(--ink);
-  background: var(--surface-muted);
-}
-
-.notice-copy li {
-  margin: 0;
-  padding-left: 3px;
-}
-
 .check-row {
   display: flex;
   align-items: flex-start;
@@ -1541,15 +1512,6 @@ th {
     font-size: 2.48rem;
   }
 
-  .notice-copy {
-    gap: 15px;
-    line-height: 1.62;
-  }
-
-  .notice-copy ul {
-    padding: 18px 18px 18px 36px;
-  }
-
   .notice-card > .button,
   .home-heading > .button,
   .matter-card-action .button,
@@ -1750,13 +1712,72 @@ th {
   font-weight: 700;
 }
 
+.auth-status-error {
+  border-color: #d9aaa2;
+  color: #762e29;
+  background: #f8e9e6;
+}
+
+.orientation-card {
+  width: min(100%, 1040px);
+}
+
+.orientation-intro {
+  max-width: 70ch;
+  margin-bottom: 0;
+  color: var(--muted);
+  font-size: 1.02rem;
+  line-height: 1.65;
+}
+
+.orientation-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 30px 48px;
+  margin-top: 34px;
+}
+
+.orientation-section {
+  padding-top: 18px;
+  border-top: 1px solid var(--line);
+}
+
 .orientation-card h2 {
-  margin: 30px 0 8px;
+  margin: 0 0 10px;
   color: var(--forest-2);
   font-family: Arial, Helvetica, sans-serif;
-  font-size: 0.78rem;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
+  font-size: 1.02rem;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+}
+
+.orientation-section p,
+.orientation-section ul {
+  margin-bottom: 0;
+  color: var(--muted);
+  line-height: 1.58;
+}
+
+.orientation-section p + p {
+  margin-top: 10px;
+}
+
+.orientation-section ul {
+  display: grid;
+  gap: 8px;
+  padding-left: 20px;
+}
+
+.orientation-section strong {
+  color: var(--ink);
+}
+
+@media (max-width: 700px) {
+  .orientation-grid {
+    grid-template-columns: 1fr;
+    gap: 24px;
+    margin-top: 28px;
+  }
 }
 
 .rescue-progress {

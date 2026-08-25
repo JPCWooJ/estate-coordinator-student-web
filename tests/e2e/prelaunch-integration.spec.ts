@@ -11,7 +11,7 @@ async function reset(page: Page) {
 
 async function signIn(page: Page) {
   await reset(page);
-  await page.getByRole("button", { name: "Use synthetic student A" }).click();
+  await page.getByRole("button", { name: "Continue as Profile A" }).click();
 }
 
 async function seed(page: Page, scenario: "zero_turn" | "incomplete" | "triggered") {
@@ -43,7 +43,7 @@ async function fillGoals(page: Page) {
 test("authenticated start renders a principal-facing orientation without internal terminology", async ({ page }) => {
   await signIn(page);
   const orientation = page.locator(".orientation-card");
-  await expect(orientation.getByRole("heading", { name: "Build the foundation for your Estate Blueprint" })).toBeVisible();
+  await expect(orientation.getByRole("heading", { name: "Build your estate plan around what matters most" })).toBeVisible();
   await expect(orientation).toContainText("Estate Coordinator supports planning and organization.");
   await expect(orientation).toContainText("10–15 minutes");
   await expect(orientation).toContainText("What you will receive");
@@ -64,7 +64,7 @@ test("mandatory Blueprint stop retains non-complete progress across reload", asy
 test("intended entry opens the grouped flow without an intermediate Begin page", async ({ page }) => {
   await signIn(page);
   await page.getByRole("checkbox", { name: /I understand the process/ }).check();
-  await page.getByRole("button", { name: "Start my Estate Blueprint" }).click();
+  await page.getByRole("button", { name: "Start my estate plan" }).click();
   await expect(page.getByRole("heading", { name: "Goals, family, and beneficiary intent" })).toBeVisible();
   await expect(page.getByRole("button", { name: "Begin", exact: true })).toHaveCount(0);
   await expect(page.locator(".workspace-aside, .conversation-history")).toHaveCount(0);
@@ -73,7 +73,7 @@ test("intended entry opens the grouped flow without an intermediate Begin page",
 test("transport failure preserves structured entries and restores retry controls", async ({ page }) => {
   await signIn(page);
   await page.getByRole("checkbox", { name: /I understand the process/ }).check();
-  await page.getByRole("button", { name: "Start my Estate Blueprint" }).click();
+  await page.getByRole("button", { name: "Start my estate plan" }).click();
   await fillGoals(page);
   let intercepted = false;
   await page.route("**/api/matters/*/intake", async (route) => {

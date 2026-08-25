@@ -94,42 +94,46 @@ export function HomeExperience() {
       <main className="home-main">
         {matters.length === 0 ? (
           <section className="notice-card orientation-card" aria-labelledby="orientation-title">
-            <div className="eyebrow">Welcome to your private planning workspace</div>
-            <h1 id="orientation-title">Build the foundation for your Estate Blueprint</h1>
-            <div className="notice-copy">
-              <p>
-                In approximately 10–15 minutes, you will organize the goals, people,
-                current planning, team, and broad financial ranges that should shape
-                your estate plan.
-              </p>
-              <h2>Helpful information to have nearby</h2>
-              <ul>
-                <li>Names and roles of family members, advisers, and trusted backups.</li>
-                <li>The kinds and approximate age of existing estate documents.</li>
-                <li>Broad asset, liability, and lifetime-security ranges—never account-level detail.</li>
-              </ul>
-              <h2>What you will receive</h2>
-              <p>
-                You will review a professional Planning Summary, make the material
-                Blueprint decisions that apply to you, and receive a web and PDF
-                Estate Blueprint to use with your professional advisers.
-              </p>
-              <h2>Privacy and professional boundaries</h2>
-              <p>
-                Estate Coordinator supports planning and organization. It does not
-                provide legal, tax, investment, or valuation advice. Confirm final
-                decisions with qualified professional advisors.
-              </p>
-              <ul>
-                <li>
-                  Share only the planning context needed here; do not enter account
-                  numbers, government identifiers, passwords, or private keys.
-                </li>
-                <li>
-                  Your answers are saved so you can resume. Sign out when finished
-                  on a shared device.
-                </li>
-              </ul>
+            <h1 id="orientation-title">Build your estate plan around what matters most</h1>
+            <p className="orientation-intro">
+              We will guide you through the goals, people, current planning, and broad
+              financial ranges that should shape your plan.
+            </p>
+            <div className="orientation-grid">
+              <section className="orientation-section">
+                <h2>What to expect</h2>
+                <ul>
+                  <li><strong>About 10–15 minutes</strong> for a typical estate.</li>
+                  <li>Plain-language questions, one focused section at a time.</li>
+                  <li>Your answers are saved so you can leave and resume.</li>
+                </ul>
+              </section>
+              <section className="orientation-section">
+                <h2>Helpful information to have nearby</h2>
+                <ul>
+                  <li>Names and roles of family, advisers, and trusted backups.</li>
+                  <li>The kinds and approximate age of existing estate documents.</li>
+                  <li>Broad financial ranges—never account-level detail.</li>
+                </ul>
+              </section>
+              <section className="orientation-section">
+                <h2>What you will receive</h2>
+                <p>
+                  A professional Planning Summary and an Estate Blueprint—a clear
+                  planning guide to review with your attorney and other advisers.
+                </p>
+              </section>
+              <section className="orientation-section">
+                <h2>Privacy and professional boundaries</h2>
+                <p>
+                  Estate Coordinator supports planning and organization. It does not
+                  provide legal, tax, investment, or valuation advice.
+                </p>
+                <p>
+                  Share only the context needed here. Do not enter account numbers,
+                  government identifiers, passwords, or private keys.
+                </p>
+              </section>
             </div>
             {!session.betaAcknowledged ? <label className="check-row">
               <input type="checkbox" checked={accepted} onChange={(event) => setAccepted(event.target.checked)} />
@@ -140,18 +144,17 @@ export function HomeExperience() {
               onClick={startMatter}
               disabled={(!session.betaAcknowledged && !accepted) || busy}
             >
-              {busy ? "Opening your plan…" : "Start my Estate Blueprint"}
+              {busy ? "Opening your plan…" : "Start my estate plan"}
             </button>
           </section>
         ) : (
           <section aria-labelledby="home-title">
             <div className="home-heading">
               <div>
-                <div className="eyebrow">Your private workspace</div>
                 <h1 id="home-title">Estate Planning Priorities</h1>
                 <p>
-                  Resume from your last saved answer, or start a new planning
-                  conversation.
+                  Continue from your last saved step. Your progress is saved so you
+                  can come back at any time.
                 </p>
               </div>
             </div>
@@ -164,13 +167,17 @@ export function HomeExperience() {
                       {matter.status === "blueprint_in_progress"
                         ? matter.stepLabel
                         : matter.status === "blueprint_ready"
-                          ? "Planning Foundation"
+                          ? "Ready for planning decisions"
                         : matter.status === "stopped"
                           ? "Professional follow-up required"
                           : "In progress"}
                     </span>
                     <h2>{matter.name}</h2>
-                    <p>{matter.stepLabel}</p>
+                    <p>
+                      {matter.status === "blueprint_ready"
+                        ? "Your priorities are ready for the next planning decisions."
+                        : matter.stepLabel}
+                    </p>
                     <small>
                       Last saved {new Date(matter.updatedAt).toLocaleString()}
                     </small>
@@ -187,9 +194,7 @@ export function HomeExperience() {
                       <span style={{ width: `${matter.progress}%` }} />
                     </div>
                     <Link className="button button-secondary" href={`/matter/${matter.id}`}>
-                      {matter.openingConfirmedAt
-                        ? "Resume planning"
-                        : "Resume conversation"}
+                      Resume my estate plan
                     </Link>
                   </div>
                 </article>

@@ -1,40 +1,38 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { FormEvent, useEffect, useState } from "react";
+import { FormEvent, useState } from "react";
 
 import { Brand } from "./brand";
 
 const syntheticUsers = [
-  { id: "11111111-1111-4111-8111-111111111111", label: "Use synthetic student A" },
-  { id: "22222222-2222-4222-8222-222222222222", label: "Use synthetic student B" },
+  { id: "11111111-1111-4111-8111-111111111111", label: "Continue as Profile A" },
+  { id: "22222222-2222-4222-8222-222222222222", label: "Continue as Profile B" },
 ];
 
-export function LoginExperience({ syntheticMode }: { syntheticMode: boolean }) {
+type SignInStatus = {
+  message: string;
+  tone: "success" | "error";
+};
+
+export function LoginExperience({
+  syntheticMode,
+  initialStatus,
+}: {
+  syntheticMode: boolean;
+  initialStatus: string;
+}) {
   const router = useRouter();
   const [email, setEmail] = useState("");
-  const [status, setStatus] = useState("");
+  const [status, setStatus] = useState<SignInStatus | null>(
+    initialStatus ? { message: initialStatus, tone: "error" } : null,
+  );
   const [busy, setBusy] = useState(false);
-
-  useEffect(() => {
-    let cancelled = false;
-
-    fetch("/api/session", { cache: "no-store" })
-      .then((response) => response.json())
-      .then((data) => {
-        if (!cancelled && data.user) router.replace("/home");
-      })
-      .catch(() => undefined);
-
-    return () => {
-      cancelled = true;
-    };
-  }, [router]);
 
   async function requestLink(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setBusy(true);
-    setStatus("");
+    setStatus(null);
     const response = await fetch("/api/auth/request-link", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -42,11 +40,13 @@ export function LoginExperience({ syntheticMode }: { syntheticMode: boolean }) {
     });
     const data = await response.json();
     setBusy(false);
-    setStatus(
-      response.ok
-        ? "Check your email for a one-time sign-in link."
-        : (data.error ?? "The link could not be sent."),
-    );
+    setStatus({
+      tone: response.ok ? "success" : "error",
+      message:
+        response.ok
+          ? "Check your email for a one-time sign-in link."
+          : (data.error ?? "The link could not be sent."),
+    });
   }
 
   async function syntheticLogin(userId: string) {
@@ -61,7 +61,7 @@ export function LoginExperience({ syntheticMode }: { syntheticMode: boolean }) {
       router.push("/home");
       router.refresh();
     } else {
-      setStatus("Synthetic sign-in failed.");
+      setStatus({ message: "This profile could not be opened.", tone: "error" });
     }
   }
 
@@ -79,9 +79,15 @@ export function LoginExperience({ syntheticMode }: { syntheticMode: boolean }) {
           </p>
 
           <form onSubmit={requestLink} className="auth-form">
-            <p className="status-text auth-status-prominent" role="status" aria-live="polite">
-              {status}
-            </p>
+            {status ? (
+              <p
+                className={`status-text auth-status-prominent auth-status-${status.tone}`}
+                role={status.tone === "error" ? "alert" : "status"}
+                aria-live={status.tone === "error" ? "assertive" : "polite"}
+              >
+                {status.message}
+              </p>
+            ) : null}
             <label htmlFor="email">Email address</label>
             <input
               id="email"
@@ -98,9 +104,9 @@ export function LoginExperience({ syntheticMode }: { syntheticMode: boolean }) {
             </button>
           </form>
 
-          {syntheticMode && (
-            <div className="synthetic-logins" aria-label="Synthetic test access">
-              <span>Local verification only</span>
+          {syntheticMode ? (
+            <div className="synthetic-logins" aria-label="Profile access">
+              <span>Choose a profile</span>
               {syntheticUsers.map((user) => (
                 <button
                   key={user.id}
@@ -112,7 +118,7 @@ export function LoginExperience({ syntheticMode }: { syntheticMode: boolean }) {
                 </button>
               ))}
             </div>
-          )}
+          ) : null}
 
           <p className="auth-footnote">
             Estate Coordinator provides planning guidance, not legal or tax advice.

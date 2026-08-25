@@ -12,7 +12,7 @@ export async function POST(request: Request) {
     assertSameOrigin(request);
     if (syntheticModeEnabled()) {
       return NextResponse.json(
-        { error: "Use a synthetic student login in test mode." },
+        { error: "Choose one of the available profiles to continue." },
         { status: 400 },
       );
     }

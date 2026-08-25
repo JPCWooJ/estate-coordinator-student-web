@@ -27,7 +27,7 @@ async function expectIdentity(page: Page, userKey: UserKey) {
 }
 
 async function signIn(page: Page, userKey: UserKey) {
-  await page.getByRole("button", { name: `Use synthetic student ${userKey}` }).click();
+  await page.getByRole("button", { name: `Continue as Profile ${userKey}` }).click();
   await expect(page).toHaveURL(/\/home$/);
   await expectIdentity(page, userKey);
 }
@@ -37,7 +37,7 @@ async function acknowledgeBeta(page: Page) {
     await page.evaluate(async () => (await fetch("/api/beta", { method: "POST" })).status),
   ).toBe(200);
   await page.reload();
-  await expect(page.getByRole("heading", { name: "Build the foundation for your Estate Blueprint" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Build your estate plan around what matters most" })).toBeVisible();
 }
 
 async function createMatter(page: Page) {

@@ -10,7 +10,7 @@ async function resetAndSignIn(page: Page) {
       headers: { origin: window.location.origin },
     });
   });
-  await page.getByRole("button", { name: "Use synthetic student A" }).click();
+  await page.getByRole("button", { name: "Continue as Profile A" }).click();
 }
 
 async function saveSection(page: Page) {
@@ -38,10 +38,10 @@ test("audited ten-state rescue journey saves once, reuses answers, and generates
   });
 
   await resetAndSignIn(page);
-  await expect(page.getByRole("heading", { name: "Build the foundation for your Estate Blueprint" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Build your estate plan around what matters most" })).toBeVisible();
   await expect(page.getByText("10–15 minutes")).toBeVisible();
   await page.getByRole("checkbox", { name: /I understand the process/ }).check();
-  await page.getByRole("button", { name: "Start my Estate Blueprint" }).click();
+  await page.getByRole("button", { name: "Start my estate plan" }).click();
 
   await expect(page.getByRole("heading", { name: "Goals, family, and beneficiary intent" })).toBeVisible();
   await expect(page.getByText("1 of 7", { exact: true })).toBeVisible();
@@ -158,7 +158,7 @@ test("canonical intake remains populated after reload", async ({ page }) => {
     });
   }, USER_ID);
   await page.goto("/home");
-  const resume = page.getByRole("link", { name: /Resume planning/ });
+  const resume = page.getByRole("link", { name: "Resume my estate plan" });
   await expect(resume).toBeVisible();
   await resume.click();
   await expect(page.getByRole("heading", { name: "Estate Blueprint", exact: true })).toBeVisible();
