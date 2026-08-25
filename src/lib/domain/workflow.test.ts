@@ -283,6 +283,50 @@ describe("Matter Opening v0.4 workflow", () => {
     expect(record.priority_details).toHaveLength(3);
   });
 
+  it("reuses an answered definition of success after the exact refer-back sequence", () => {
+    const successDefinition =
+      "My spouse remains secure and our children receive the estate fairly.";
+    const repeatedQuestion = "What would success look like in practical terms?";
+    const record: MatterOpeningRecord = {
+      ...createInitialRecord("aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"),
+      desired_outcomes: ["other"],
+      top_three_priorities: ["other"],
+    };
+
+    const answered = advance(
+      record,
+      { step: "MO01_GOAL_FOLLOWUP", clarification: null, stop: null },
+      accepted({ principal_definition_of_success: successDefinition }),
+    );
+
+    expect(answered.record.principal_definition_of_success).toBe(successDefinition);
+    expect(answered.state.step).toBe("MO02_PEOPLE");
+
+    const referredBack = applyPlanningSummaryCorrection(
+      answered.record,
+      {
+        step: "MO08_CONFIRM",
+        clarification: { question: repeatedQuestion },
+        stop: null,
+      },
+      {
+        outcome: "accepted",
+        acknowledgement:
+          "Understood. I’ll use your previously provided definition of success.",
+        clarification_question: null,
+        patch: emptyInterpretationPatch(),
+      },
+    );
+
+    expect(referredBack.assistantMessage).toBe(
+      "Understood. I’ll use your previously provided definition of success.",
+    );
+    expect(referredBack.state.clarification).toBeNull();
+    expect(getCanonicalQuestion(referredBack.record, referredBack.state)).not.toBe(
+      repeatedQuestion,
+    );
+  });
+
   it("asks MO-02 circumstances only when the circumstance state remains unresolved", () => {
     const record = createInitialRecord("aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa");
     const state: WorkflowState = {

@@ -83,13 +83,24 @@ const STEP_PROGRESS: Record<OpeningStep, number> = {
   STOPPED: USER_JOURNEY_PROGRESS.estatePlanningPriorities.outcomes,
 };
 
+function hasAnsweredDefinitionOfSuccess(record: MatterOpeningRecord) {
+  const canonicalStatus =
+    record.canonical_intake?.fieldMeta["goals.success"]?.status;
+  if (canonicalStatus && canonicalStatus !== "missing") return true;
+
+  const value = record.principal_definition_of_success.trim().toLowerCase();
+  return Boolean(value) && value !== "unknown";
+}
+
 function nextPriority(record: MatterOpeningRecord) {
   return record.top_three_priorities.find(
     (priority) => {
       const detail = record.priority_details.find(
         (item) => item.outcome === priority,
       );
-      return !detail || !detail.detail.trim();
+      const definitionAlreadyAnswersPriority =
+        priority === "other" && hasAnsweredDefinitionOfSuccess(record);
+      return (!detail || !detail.detail.trim()) && !definitionAlreadyAnswersPriority;
     },
   );
 }
@@ -212,13 +223,26 @@ function applyStepPatch(
         top_three_priorities:
           patch.top_three_priorities ?? record.top_three_priorities,
       };
-    case "MO01_GOAL_FOLLOWUP":
-      return patch.priority_detail
-        ? {
-            ...record,
-            priority_details: replacePriorityDetail(record, patch.priority_detail),
-          }
-        : record;
+    case "MO01_GOAL_FOLLOWUP": {
+      if (patch.priority_detail) {
+        return {
+          ...record,
+          priority_details: replacePriorityDetail(record, patch.priority_detail),
+        };
+      }
+      const pendingPriority = nextPriority(record);
+      if (
+        pendingPriority === "other" &&
+        patch.principal_definition_of_success !== null
+      ) {
+        return {
+          ...record,
+          principal_definition_of_success:
+            patch.principal_definition_of_success,
+        };
+      }
+      return record;
+    }
     case "MO02_PEOPLE":
     case "MO02_CIRCUMSTANCES":
       return {
