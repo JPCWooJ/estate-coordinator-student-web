@@ -78,6 +78,18 @@ function compact(values: Array<string | null | undefined>) {
   ))];
 }
 
+function currency(value: number) {
+  return new Intl.NumberFormat("en-US", {
+    style: "currency",
+    currency: "USD",
+    maximumFractionDigits: 0,
+  }).format(value);
+}
+
+function label(value: string) {
+  return value.replaceAll("_", " ");
+}
+
 function canonicalSections(
   record: MatterOpeningRecord,
 ): PlanningSummaryProjection["sections"] {
@@ -126,6 +138,7 @@ function canonicalSections(
   const context = intake.planningContext;
   const team = intake.teamContinuity;
   const financial = intake.financialRange;
+  const financialProfile = intake.financialProfile;
   const unresolved = Object.entries(intake.fieldMeta)
     .filter(([, metadata]) => metadata.status !== "answered" && metadata.status !== "not_applicable")
     .map(([fieldId, metadata]) => `${fieldId}: ${metadata.status.replaceAll("_", " ")}`);
@@ -182,14 +195,44 @@ function canonicalSections(
     },
     {
       key: "planning_range",
-      title: "Planning range and governing constraints",
-      items: financial
-        ? [
-            `Material assets: ${financial.materialAssetsRange}; liabilities: ${financial.liabilitiesRange}; expected inheritance: ${financial.expectedInheritanceRange}.`,
-            `Lifetime-security floor: ${financial.lifetimeSecurityFloor}; counted assets: ${financial.assetsCountedTowardFloor}.`,
-            `Retained control: ${financial.retainedControlRequirement}; extraordinary obligations: ${financial.extraordinaryFutureObligations}.`,
-          ]
-        : [UNKNOWN],
+      title: "Estate balance sheet and lifetime-security analysis",
+      items: financialProfile
+        ? (() => {
+            const calculations = financialProfile.calculations;
+            const linkedAssetIds = new Set(
+              financialProfile.lifestyle.incomeSources.flatMap((source) =>
+                source.linkedAssetId ? [source.linkedAssetId] : [],
+              ),
+            );
+            return compact([
+              ...financialProfile.assets.map(
+                (asset) =>
+                  `Asset — ${asset.description || label(asset.category)}: ${currency(asset.approximateValue)}; ${label(asset.category)}; ${label(asset.ownershipControl)}${linkedAssetIds.has(asset.id) ? "; identified as producing recurring income" : ""}${asset.note ? `; note: ${asset.note}` : ""}.`,
+              ),
+              ...financialProfile.liabilities.map(
+                (liability) =>
+                  `Liability — ${liability.description || label(liability.category)}: ${currency(liability.approximateValue)}; ${label(liability.category)}; ${label(liability.ownershipControl)}${liability.note ? `; note: ${liability.note}` : ""}.`,
+              ),
+              `Balance-sheet totals — assets: ${currency(calculations.totalAssets)}; liabilities: ${currency(calculations.totalLiabilities)}; estimated net estate: ${currency(calculations.estimatedNetEstate)}.`,
+              `Monthly lifestyle — recurring expenses: ${currency(financialProfile.lifestyle.monthlyExpenses)}; recurring income: ${currency(calculations.monthlyRecurringIncome)}.`,
+              ...financialProfile.lifestyle.incomeSources.map(
+                (source) =>
+                  `Recurring income — ${source.source}: ${currency(source.monthlyAmount)} per month${source.linkedAssetId ? "; linked to a retained balance-sheet asset" : ""}.`,
+              ),
+              `Planning assumptions — ${financialProfile.lifestyle.federalEffectiveTaxRatePercent}% federal-only effective income-tax planning assumption; ${financialProfile.lifestyle.safetyBufferPercent}% safety buffer; 4% planning withdrawal rate; no state tax included.`,
+              calculations.annualShortfall > 0
+                ? `Annual cash-flow shortfall: ${currency(calculations.annualShortfall)}; tax-adjusted annual portfolio income required: ${currency(calculations.taxAdjustedAnnualPortfolioIncomeRequired)}.`
+                : `Annual cash-flow surplus: ${currency(calculations.annualSurplus)}; no additional portfolio income is required by this calculation.`,
+              `Lifetime-security result — minimum liquid assets required: ${currency(calculations.minimumLiquidAssetsRequired)}; retained income-producing assets: ${currency(calculations.retainedIncomeProducingAssets)}; recommended controllable-estate floor: ${currency(calculations.recommendedControllableEstateFloor)}.`,
+            ]);
+          })()
+        : financial
+          ? [
+              `Material assets: ${financial.materialAssetsRange}; liabilities: ${financial.liabilitiesRange}; expected inheritance: ${financial.expectedInheritanceRange}.`,
+              `Lifetime-security floor: ${financial.lifetimeSecurityFloor}; counted assets: ${financial.assetsCountedTowardFloor}.`,
+              `Retained control: ${financial.retainedControlRequirement}; extraordinary obligations: ${financial.extraordinaryFutureObligations}.`,
+            ]
+          : [UNKNOWN],
     },
     {
       key: "team_continuity",

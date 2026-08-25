@@ -195,13 +195,39 @@ describe("canonical grouped intake", () => {
       submission({
         section: "financial_range",
         values: {
-          materialAssetsRange: "$8 million to $10 million",
-          liabilitiesRange: "$500,000 to $750,000",
-          expectedInheritanceRange: "none",
-          lifetimeSecurityFloor: "$5 million",
-          assetsCountedTowardFloor: "home and liquid investments",
-          retainedControlRequirement: "retain the home and liquid investments",
-          extraordinaryFutureObligations: "education support for grandchildren",
+          assets: [
+            {
+              id: "11111111-1111-4111-8111-111111111111",
+              category: "brokerage_accounts",
+              approximateValue: 8_000_000,
+              description: "Investment portfolio",
+              ownershipControl: "direct_control",
+              note: "",
+            },
+          ],
+          liabilities: [
+            {
+              id: "22222222-2222-4222-8222-222222222222",
+              category: "mortgages",
+              approximateValue: 500_000,
+              description: "Home mortgage",
+              ownershipControl: "shared_control",
+              note: "",
+            },
+          ],
+          lifestyle: {
+            monthlyExpenses: 20_000,
+            incomeSources: [
+              {
+                id: "33333333-3333-4333-8333-333333333333",
+                source: "Portfolio distributions",
+                monthlyAmount: 10_000,
+                linkedAssetId: "11111111-1111-4111-8111-111111111111",
+              },
+            ],
+            safetyBufferPercent: 30,
+            federalEffectiveTaxRatePercent: 25,
+          },
         },
       }),
       NOW,
@@ -211,9 +237,27 @@ describe("canonical grouped intake", () => {
     expect(final.current_plan_snapshot).toContain("2018");
     expect(final.geographic_and_complexity_flags).toContain("family business");
     expect(final.professional_and_family_contacts[0]?.name).toBe("Jordan Lee");
-    expect(final.canonical_intake!.financialRange!.materialAssetsRange).toBe(
-      "$8 million to $10 million",
-    );
+    expect(final.canonical_intake!.financialProfile).toMatchObject({
+      assets: [
+        {
+          category: "brokerage_accounts",
+          approximateValue: 8_000_000,
+        },
+      ],
+      calculations: {
+        totalAssets: 8_000_000,
+        totalLiabilities: 500_000,
+        estimatedNetEstate: 7_500_000,
+        annualShortfall: 120_000,
+        recommendedControllableEstateFloor: 13_200_000,
+      },
+    });
+    expect(final.canonical_intake!.financialRange).toMatchObject({
+      materialAssetsRange: "$8,000,000 total assets (structured estimate)",
+      liabilitiesRange: "$500,000 total liabilities (structured estimate)",
+      lifetimeSecurityFloor:
+        "$13,200,000 recommended controllable-estate floor",
+    });
     expect(final.canonical_intake!.currentSection).toBe("planning_summary");
     expect(final.canonical_intake!.completedSections).toEqual([
       "goals_family",
@@ -223,29 +267,29 @@ describe("canonical grouped intake", () => {
     ]);
   });
 
-  it("treats explicit unknown and not-decided values as answered statuses", () => {
+  it("marks the structured financial facts and calculated security floor as answered", () => {
     const result = applyStructuredIntake(
       createInitialRecord(MATTER_ID),
       submission({
         section: "financial_range",
         values: {
-          materialAssetsRange: "unknown",
-          liabilitiesRange: "none",
-          expectedInheritanceRange: "not applicable",
-          lifetimeSecurityFloor: "not decided",
-          assetsCountedTowardFloor: "not decided",
-          retainedControlRequirement: "not decided",
-          extraordinaryFutureObligations: "none",
+          assets: [],
+          liabilities: [],
+          lifestyle: {
+            monthlyExpenses: 8_000,
+            incomeSources: [],
+            safetyBufferPercent: 30,
+            federalEffectiveTaxRatePercent: 25,
+          },
         },
       }),
       NOW,
     );
 
     expect(
-      result.record.canonical_intake!.fieldMeta[
-        "financial.lifetime_security_floor"
-      ]?.status,
-    ).toBe("not_decided");
+      result.record.canonical_intake!.fieldMeta["financial.security_floor"]
+        ?.status,
+    ).toBe("answered");
     expect(
       result.record.canonical_intake!.fieldMeta["financial.liabilities"]?.status,
     ).toBe("answered");

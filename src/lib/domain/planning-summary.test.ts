@@ -69,13 +69,53 @@ describe("professional Planning Summary", () => {
     record = apply(record, {
       section: "financial_range",
       values: {
-        materialAssetsRange: "$8M-$10M",
-        liabilitiesRange: "$500K-$750K",
-        expectedInheritanceRange: "none expected",
-        lifetimeSecurityFloor: "$5M-FLOOR",
-        assetsCountedTowardFloor: "HOME-AND-LIQUID-ASSETS",
-        retainedControlRequirement: "RETAIN-HOME-CONTROL",
-        extraordinaryFutureObligations: "GRANDCHILD-EDUCATION",
+        assets: [
+          {
+            id: "11111111-1111-4111-8111-111111111111",
+            category: "brokerage_accounts",
+            approximateValue: 8_000_000,
+            description: "TAXABLE-PORTFOLIO",
+            ownershipControl: "direct_control",
+            note: "CORE-INCOME-ASSET",
+          },
+          {
+            id: "22222222-2222-4222-8222-222222222222",
+            category: "primary_residence",
+            approximateValue: 2_000_000,
+            description: "MIAMI-HOME",
+            ownershipControl: "shared_control",
+            note: "",
+          },
+        ],
+        liabilities: [
+          {
+            id: "33333333-3333-4333-8333-333333333333",
+            category: "mortgages",
+            approximateValue: 500_000,
+            description: "HOME-MORTGAGE",
+            ownershipControl: "shared_control",
+            note: "",
+          },
+        ],
+        lifestyle: {
+          monthlyExpenses: 20_000,
+          incomeSources: [
+            {
+              id: "44444444-4444-4444-8444-444444444444",
+              source: "PORTFOLIO-DISTRIBUTIONS",
+              monthlyAmount: 10_000,
+              linkedAssetId: "11111111-1111-4111-8111-111111111111",
+            },
+            {
+              id: "55555555-5555-4555-8555-555555555555",
+              source: "PENSION-INCOME",
+              monthlyAmount: 5_000,
+              linkedAssetId: null,
+            },
+          ],
+          safetyBufferPercent: 30,
+          federalEffectiveTaxRatePercent: 25,
+        },
       },
     });
 
@@ -96,11 +136,18 @@ describe("professional Planning Summary", () => {
       "REVOCABLE-TRUST",
       "MOVED-TO-FLORIDA",
       "JORDAN-LEE",
-      "$8M-$10M",
-      "$5M-FLOOR",
+      "TAXABLE-PORTFOLIO",
+      "MIAMI-HOME",
+      "HOME-MORTGAGE",
+      "PORTFOLIO-DISTRIBUTIONS",
+      "PENSION-INCOME",
+      "$10,600,000",
     ]) {
       expect(serialized.split(fact)).toHaveLength(2);
     }
+    expect(serialized.split("25% federal-only effective income-tax planning assumption"))
+      .toHaveLength(2);
+    expect(serialized.split("30% safety buffer")).toHaveLength(2);
     expect(serialized).not.toContain("house_in_order");
   });
 });

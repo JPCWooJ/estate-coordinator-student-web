@@ -586,7 +586,7 @@ function planningBaselineEvidenceTrigger(baseline: PlanningBaseline) {
     .toLowerCase();
   if (
     expectedInheritance &&
-    !/^(unknown|not decided|not applicable|none(?: expected)?)$/.test(
+    !/^(unknown|not decided|not applicable|not assessed(?: in .*)?|none(?: expected)?)$/.test(
       expectedInheritance,
     )
   ) {

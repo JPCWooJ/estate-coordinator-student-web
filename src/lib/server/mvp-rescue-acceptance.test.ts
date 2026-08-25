@@ -98,13 +98,53 @@ function submissions(): StructuredIntakeSubmission[] {
       operationId: randomUUID(),
       section: "financial_range",
       values: {
-        materialAssetsRange: "$8 million to $10 million",
-        liabilitiesRange: "$500,000 to $750,000",
-        expectedInheritanceRange: "none expected",
-        lifetimeSecurityFloor: "$5 million",
-        assetsCountedTowardFloor: "liquid investments and primary residence",
-        retainedControlRequirement: "retain the home and liquid investments",
-        extraordinaryFutureObligations: "education support for grandchildren",
+        assets: [
+          {
+            id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+            category: "brokerage_accounts",
+            approximateValue: 8_000_000,
+            description: "Taxable portfolio",
+            ownershipControl: "direct_control",
+            note: "",
+          },
+          {
+            id: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
+            category: "primary_residence",
+            approximateValue: 2_000_000,
+            description: "Miami home",
+            ownershipControl: "shared_control",
+            note: "",
+          },
+        ],
+        liabilities: [
+          {
+            id: "cccccccc-cccc-4ccc-8ccc-cccccccccccc",
+            category: "mortgages",
+            approximateValue: 500_000,
+            description: "Home mortgage",
+            ownershipControl: "shared_control",
+            note: "",
+          },
+        ],
+        lifestyle: {
+          monthlyExpenses: 20_000,
+          incomeSources: [
+            {
+              id: "dddddddd-dddd-4ddd-8ddd-dddddddddddd",
+              source: "Portfolio distributions",
+              monthlyAmount: 10_000,
+              linkedAssetId: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+            },
+            {
+              id: "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee",
+              source: "Pension",
+              monthlyAmount: 5_000,
+              linkedAssetId: null,
+            },
+          ],
+          safetyBufferPercent: 30,
+          federalEffectiveTaxRatePercent: 25,
+        },
       },
     },
   ];
@@ -139,14 +179,28 @@ describe("MVP rescue normal path", () => {
     const { matter } = await reachDecisions();
 
     expect(matter.blueprintState?.planning_baseline).toEqual({
-      material_assets_range: "$8 million to $10 million",
-      liabilities_range: "$500,000 to $750,000",
-      expected_inheritance_range: "none expected",
-      lifetime_security_floor: "$5 million",
-      assets_counted_toward_floor: "liquid investments and primary residence",
-      retained_control_requirement: "retain the home and liquid investments",
-      extraordinary_future_obligations: "education support for grandchildren",
+      material_assets_range: "$10,000,000 total assets (structured estimate)",
+      liabilities_range: "$500,000 total liabilities (structured estimate)",
+      expected_inheritance_range:
+        "not assessed in this structured planning-level security calculation",
+      lifetime_security_floor:
+        "$10,600,000 recommended controllable-estate floor",
+      assets_counted_toward_floor:
+        "Taxable portfolio ($8,000,000)",
+      retained_control_requirement:
+        "retain the recommended controllable-estate floor, including $8,000,000 of user-identified income-producing assets",
+      extraordinary_future_obligations:
+        "reflected only when entered in structured liabilities or recurring monthly expenses",
     });
+    expect(matter.record.canonical_intake?.financialProfile?.calculations)
+      .toMatchObject({
+        totalAssets: 10_000_000,
+        totalLiabilities: 500_000,
+        annualShortfall: 60_000,
+        minimumLiquidAssetsRequired: 2_000_000,
+        retainedIncomeProducingAssets: 8_000_000,
+        recommendedControllableEstateFloor: 10_600_000,
+      });
     expect(matter.blueprintState?.interaction?.kind).toBe("recommendations");
     expect(matter.blueprintState?.interaction?.kind).not.toBe("question");
     expect(

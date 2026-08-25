@@ -38,7 +38,7 @@ const STEP_LABELS: Record<OpeningStep, string> = {
   INTAKE_GOALS_FAMILY: "Goals, family, and beneficiary intent",
   INTAKE_PLANNING_CONTEXT: "Current plan and planning context",
   INTAKE_TEAM_CONTINUITY: "Team and continuity",
-  INTAKE_FINANCIAL_RANGE: "Financial planning range",
+  INTAKE_FINANCIAL_RANGE: "Financial foundation",
   MO01_OUTCOMES: "Your estate-planning priorities",
   MO01_PRIORITIES: "Your top three priorities",
   MO01_GOAL_FOLLOWUP: "What success looks like",

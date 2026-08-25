@@ -1,6 +1,13 @@
 import { z } from "zod";
 
 import type { MatterOpeningRecord } from "./matter-opening";
+import {
+  createFinancialProfile,
+  FinancialProfileInputsSchema,
+  FinancialProfileSchema,
+  retainedIncomeProducingAssets,
+  type FinancialProfile,
+} from "./financial-intake";
 
 export const OutcomeCodeSchema = z.enum([
   "intended_transfer",
@@ -136,7 +143,7 @@ export const StructuredIntakeSubmissionSchema = z.discriminatedUnion("section", 
   z.object({
     operationId: z.string().uuid(),
     section: z.literal("financial_range"),
-    values: FinancialRangeValuesSchema,
+    values: FinancialProfileInputsSchema,
   }),
 ]);
 export type StructuredIntakeSubmission = z.infer<
@@ -150,6 +157,7 @@ export const CanonicalIntakeStateSchema = z.object({
   planningContext: PlanningContextValuesSchema.nullable(),
   teamContinuity: TeamContinuityValuesSchema.nullable(),
   financialRange: FinancialRangeValuesSchema.nullable(),
+  financialProfile: FinancialProfileSchema.nullable().default(null),
   fieldMeta: z.record(z.string(), FieldMetadataSchema),
   revision: z.number().int().nonnegative(),
   processedOperationIds: z.array(z.string().uuid()).max(100),
@@ -190,13 +198,12 @@ const DECISION_SUPPORT: Record<EditableSection, Record<string, string[]>> = {
     "continuity.readiness": ["family_readiness"],
   },
   financial_range: {
-    "financial.material_assets": ["planning_exposure", "transfer_capacity"],
+    "financial.assets": ["planning_exposure", "transfer_capacity"],
     "financial.liabilities": ["transfer_capacity", "estate_liquidity"],
-    "financial.expected_inheritance": ["planning_exposure", "evidence_checkpoint"],
-    "financial.lifetime_security_floor": ["lifetime_security", "transfer_capacity"],
-    "financial.assets_counted_toward_floor": ["lifetime_security"],
-    "financial.retained_control": ["lifetime_security", "transfer_strategy"],
-    "financial.extraordinary_obligations": ["transfer_capacity", "estate_liquidity"],
+    "financial.monthly_expenses": ["lifetime_security", "transfer_capacity"],
+    "financial.recurring_income": ["lifetime_security", "transfer_capacity"],
+    "financial.planning_assumptions": ["lifetime_security"],
+    "financial.security_floor": ["lifetime_security", "transfer_strategy"],
   },
 };
 
@@ -245,6 +252,7 @@ export function createCanonicalIntakeState(): CanonicalIntakeState {
     planningContext: null,
     teamContinuity: null,
     financialRange: null,
+    financialProfile: null,
     fieldMeta: {},
     revision: 0,
     processedOperationIds: [],
@@ -330,14 +338,58 @@ function sectionMetaValues(
     } as Record<string, string | string[]>;
   }
   return {
-    "financial.material_assets": submission.values.materialAssetsRange,
-    "financial.liabilities": submission.values.liabilitiesRange,
-    "financial.expected_inheritance": submission.values.expectedInheritanceRange,
-    "financial.lifetime_security_floor": submission.values.lifetimeSecurityFloor,
-    "financial.assets_counted_toward_floor": submission.values.assetsCountedTowardFloor,
-    "financial.retained_control": submission.values.retainedControlRequirement,
-    "financial.extraordinary_obligations": submission.values.extraordinaryFutureObligations,
+    "financial.assets": submission.values.assets.map(
+      (asset) => `${asset.category}:${asset.approximateValue}`,
+    ),
+    "financial.liabilities": submission.values.liabilities.map(
+      (liability) => `${liability.category}:${liability.approximateValue}`,
+    ),
+    "financial.monthly_expenses": String(submission.values.lifestyle.monthlyExpenses),
+    "financial.recurring_income": submission.values.lifestyle.incomeSources.map(
+      (source) => `${source.source}:${source.monthlyAmount}`,
+    ),
+    "financial.planning_assumptions": [
+      `federal:${submission.values.lifestyle.federalEffectiveTaxRatePercent}`,
+      `buffer:${submission.values.lifestyle.safetyBufferPercent}`,
+      "withdrawal:4",
+    ],
+    "financial.security_floor": "calculated from structured inputs",
   } as Record<string, string | string[]>;
+}
+
+function currency(value: number) {
+  return new Intl.NumberFormat("en-US", {
+    style: "currency",
+    currency: "USD",
+    maximumFractionDigits: 0,
+  }).format(value);
+}
+
+function financialRangeProjection(
+  profile: FinancialProfile,
+): FinancialRangeValues {
+  const retainedAssets = retainedIncomeProducingAssets(profile);
+  const countedAssets = retainedAssets.length
+    ? retainedAssets
+        .map(
+          (asset) =>
+            `${asset.description || asset.category.replaceAll("_", " ")} (${currency(asset.approximateValue)})`,
+        )
+        .join("; ")
+    : "none identified from recurring income sources";
+  const calculations = profile.calculations;
+
+  return FinancialRangeValuesSchema.parse({
+    materialAssetsRange: `${currency(calculations.totalAssets)} total assets (structured estimate)`,
+    liabilitiesRange: `${currency(calculations.totalLiabilities)} total liabilities (structured estimate)`,
+    expectedInheritanceRange:
+      "not assessed in this structured planning-level security calculation",
+    lifetimeSecurityFloor: `${currency(calculations.recommendedControllableEstateFloor)} recommended controllable-estate floor`,
+    assetsCountedTowardFloor: countedAssets,
+    retainedControlRequirement: `retain the recommended controllable-estate floor, including ${currency(calculations.retainedIncomeProducingAssets)} of user-identified income-producing assets`,
+    extraordinaryFutureObligations:
+      "reflected only when entered in structured liabilities or recurring monthly expenses",
+  });
 }
 
 export function applyStructuredIntake(
@@ -354,6 +406,10 @@ export function applyStructuredIntake(
   const completedSections = [
     ...new Set([...current.completedSections, submission.section]),
   ];
+  const submittedFinancialProfile =
+    submission.section === "financial_range"
+      ? createFinancialProfile(submission.values)
+      : null;
   const canonical: CanonicalIntakeState = {
     ...current,
     goalsFamily:
@@ -368,8 +424,12 @@ export function applyStructuredIntake(
         : current.teamContinuity,
     financialRange:
       submission.section === "financial_range"
-        ? submission.values
+        ? financialRangeProjection(submittedFinancialProfile!)
         : current.financialRange,
+    financialProfile:
+      submission.section === "financial_range"
+        ? submittedFinancialProfile
+        : current.financialProfile,
     completedSections,
     currentSection: nextSection(completedSections),
     fieldMeta: {

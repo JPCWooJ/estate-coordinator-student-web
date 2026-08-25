@@ -10,24 +10,13 @@ import type {
   StructuredIntakeSubmission,
 } from "@/lib/domain/intake";
 import { OUTCOME_LABELS, type OutcomeCode } from "@/lib/domain/matter-opening";
+import { FinancialIntakeForm } from "./financial-intake-form";
 
 type EditableSection = Exclude<IntakeSection, "planning_summary">;
 
 const OUTCOMES = Object.entries(OUTCOME_LABELS) as Array<
   [keyof typeof OUTCOME_LABELS, string]
 >;
-
-const RANGE_OPTIONS = [
-  "under $1 million",
-  "$1 million to $3 million",
-  "$3 million to $5 million",
-  "$5 million to $10 million",
-  "$10 million to $25 million",
-  "$25 million or more",
-  "none",
-  "unknown",
-  "not decided",
-];
 
 function values(form: HTMLFormElement) {
   return new FormData(form);
@@ -51,17 +40,6 @@ function Field({ label, children, hint }: { label: string; children: React.React
   );
 }
 
-function RangeSelect({ name, label, initial }: { name: string; label: string; initial?: string }) {
-  return (
-    <Field label={label} hint="A planning range is enough.">
-      <select name={name} defaultValue={initial || ""} required>
-        <option value="" disabled>Select a range</option>
-        {RANGE_OPTIONS.map((option) => <option key={option}>{option}</option>)}
-      </select>
-    </Field>
-  );
-}
-
 export function StructuredIntakeForm({
   section,
   canonical,
@@ -79,7 +57,17 @@ export function StructuredIntakeForm({
   const goals = canonical.goalsFamily;
   const context = canonical.planningContext;
   const team = canonical.teamContinuity;
-  const financial = canonical.financialRange;
+
+  if (section === "financial_range") {
+    return (
+      <FinancialIntakeForm
+        canonical={canonical}
+        busy={busy}
+        onSave={onSave}
+        onCancel={onCancel}
+      />
+    );
+  }
 
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -115,7 +103,7 @@ export function StructuredIntakeForm({
       }
       submission = {
         operationId: crypto.randomUUID(),
-        section,
+        section: "goals_family",
         values: {
           desiredOutcomes: uniquePriorities,
           topPriorities: uniquePriorities,
@@ -127,7 +115,7 @@ export function StructuredIntakeForm({
     } else if (section === "planning_context") {
       submission = {
         operationId: crypto.randomUUID(),
-        section,
+        section: "planning_context",
         values: {
           currentPlanStatus: text(data, "currentPlanStatus") as NonNullable<typeof context>["currentPlanStatus"],
           documentTypes: checked(data, "documentTypes"),
@@ -143,7 +131,7 @@ export function StructuredIntakeForm({
           complexityDetails: text(data, "complexityDetails", "none"),
         },
       };
-    } else if (section === "team_continuity") {
+    } else {
       const contacts: TeamContact[] = [{
         name: text(data, "contactName"),
         firmOrRelationship: text(data, "contactFirm"),
@@ -172,27 +160,13 @@ export function StructuredIntakeForm({
       }
       submission = {
         operationId: crypto.randomUUID(),
-        section,
+        section: "team_continuity",
         values: {
           contacts,
           missingProfessionalRoles: checked(data, "missingProfessionalRoles"),
           continuityResponsibilities,
           specialAssetsOrPurposes: checked(data, "specialAssetsOrPurposes"),
           readinessPlan: text(data, "readinessPlan"),
-        },
-      };
-    } else {
-      submission = {
-        operationId: crypto.randomUUID(),
-        section,
-        values: {
-          materialAssetsRange: text(data, "materialAssetsRange"),
-          liabilitiesRange: text(data, "liabilitiesRange"),
-          expectedInheritanceRange: text(data, "expectedInheritanceRange"),
-          lifetimeSecurityFloor: text(data, "lifetimeSecurityFloor"),
-          assetsCountedTowardFloor: text(data, "assetsCountedTowardFloor"),
-          retainedControlRequirement: text(data, "retainedControlRequirement"),
-          extraordinaryFutureObligations: text(data, "extraordinaryFutureObligations"),
         },
       };
     }
@@ -258,7 +232,7 @@ export function StructuredIntakeForm({
           <fieldset className="check-grid"><legend>Material complexity</legend>{["trust", "business", "digital assets", "charitable planning", "retirement assets", "insurance", "none identified"].map((item) => <label key={item}><input type="checkbox" name="complexityFlags" value={item} defaultChecked={context?.complexityFlags.includes(item)} /> {item}</label>)}</fieldset>
           <Field label="Complexity detail" hint="Explain only a selected complexity; otherwise enter none."><input name="complexityDetails" defaultValue={context?.complexityDetails || "none"} required /></Field>
         </>
-      ) : section === "team_continuity" ? (
+      ) : (
         <>
           <div className="eyebrow">3 of 7 · Planning intake</div>
           <h2>Team and continuity</h2>
@@ -269,21 +243,6 @@ export function StructuredIntakeForm({
           <fieldset className="check-grid"><legend>Responsibilities that must continue</legend>{["household support", "bill payment", "investment oversight", "business management", "property management", "digital access"].map((item) => <label key={item}><input type="checkbox" name="continuityResponsibilities" value={item} defaultChecked={team ? team.continuityResponsibilities.includes(item) : item === "household support"} /> {item}</label>)}</fieldset>
           <fieldset className="check-grid"><legend>Special assets or purposes</legend>{["business", "real estate", "digital assets", "charitable purpose", "none"].map((item) => <label key={item}><input type="checkbox" name="specialAssetsOrPurposes" value={item} defaultChecked={team?.specialAssetsOrPurposes.includes(item)} /> {item}</label>)}</fieldset>
           <Field label="Family readiness plan"><select name="readinessPlan" defaultValue={team?.readinessPlan || "not decided"} required><option>annual family meeting</option><option>increasing participation with readiness</option><option>professional oversight continues</option><option>not decided</option></select></Field>
-        </>
-      ) : (
-        <>
-          <div className="eyebrow">4 of 7 · Planning intake</div>
-          <h2>Financial planning range</h2>
-          <p>Use broad ranges. Account-level detail is not needed.</p>
-          <div className="intake-grid">
-            <RangeSelect name="materialAssetsRange" label="Material assets" initial={financial?.materialAssetsRange} />
-            <RangeSelect name="liabilitiesRange" label="Liabilities" initial={financial?.liabilitiesRange} />
-            <RangeSelect name="expectedInheritanceRange" label="Expected inheritance" initial={financial?.expectedInheritanceRange} />
-            <RangeSelect name="lifetimeSecurityFloor" label="Lifetime-security floor" initial={financial?.lifetimeSecurityFloor} />
-            <Field label="Assets counted toward that floor"><select name="assetsCountedTowardFloor" defaultValue={financial?.assetsCountedTowardFloor || "liquid investments and primary residence"} required><option>liquid investments only</option><option>liquid investments and primary residence</option><option>all material assets</option><option>not decided</option><option>unknown</option></select></Field>
-            <Field label="Retained-control requirement"><select name="retainedControlRequirement" defaultValue={financial?.retainedControlRequirement || "retain the home and liquid investments"} required><option>retain the home and liquid investments</option><option>retain all current control</option><option>flexibility matters more than control</option><option>not decided</option><option>unknown</option></select></Field>
-            <Field label="Extraordinary future obligations"><select name="extraordinaryFutureObligations" defaultValue={financial?.extraordinaryFutureObligations || "none"} required><option>none</option><option>education support</option><option>continuing family support</option><option>business capital need</option><option>not decided</option><option>unknown</option></select></Field>
-          </div>
         </>
       )}
       <p className="error-text" role="alert">{localError}</p>

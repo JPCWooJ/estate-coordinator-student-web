@@ -79,11 +79,51 @@ test("audited ten-state rescue journey saves once, reuses answers, and generates
   await page.getByLabel("none", { exact: true }).last().check();
   await saveSection(page);
 
-  await expect(page.getByRole("heading", { name: "Financial planning range" })).toBeVisible();
-  await page.locator("select[name='materialAssetsRange']").selectOption({ label: "$5 million to $10 million" });
-  await page.locator("select[name='liabilitiesRange']").selectOption({ label: "$1 million to $3 million" });
-  await page.locator("select[name='expectedInheritanceRange']").selectOption({ label: "none" });
-  await page.locator("select[name='lifetimeSecurityFloor']").selectOption({ label: "$3 million to $5 million" });
+  await expect(page.getByRole("heading", { name: "Estate Balance Sheet" })).toBeVisible();
+  await expect(page.locator(".matter-topbar")).toContainText("Financial foundation");
+  await expect(page.locator(".progress-copy")).toContainText("Financial foundation");
+  await page.getByRole("button", { name: "Add asset" }).click();
+  const brokerage = page.getByRole("group", { name: "Asset 1" });
+  await brokerage.getByLabel("Asset category").selectOption("brokerage_accounts");
+  await brokerage.getByLabel("Approximate value").fill("8000000");
+  await brokerage.getByLabel("Description or name").fill("Taxable portfolio");
+  await brokerage.getByLabel("Ownership / control").selectOption("direct_control");
+
+  await page.getByRole("button", { name: "Add asset" }).click();
+  const residence = page.getByRole("group", { name: "Asset 2" });
+  await residence.getByLabel("Asset category").selectOption("primary_residence");
+  await residence.getByLabel("Approximate value").fill("2000000");
+  await residence.getByLabel("Description or name").fill("Miami home");
+  await residence.getByLabel("Ownership / control").selectOption("shared_control");
+
+  await page.getByRole("button", { name: "Add liability" }).click();
+  const mortgage = page.getByRole("group", { name: "Liability 1" });
+  await mortgage.getByLabel("Liability category").selectOption("mortgages");
+  await mortgage.getByLabel("Approximate value").fill("500000");
+  await mortgage.getByLabel("Description or name").fill("Home mortgage");
+  await expect(page.getByTestId("total-assets")).toHaveText("$10,000,000");
+  await expect(page.getByTestId("total-liabilities")).toHaveText("$500,000");
+  await expect(page.getByTestId("net-estate")).toHaveText("$9,500,000");
+
+  await expect(page.getByRole("heading", { name: "Lifestyle P&L / Security Analysis" })).toBeVisible();
+  await page.getByLabel("Recurring monthly expenses").fill("20000");
+  await page.getByRole("button", { name: "Add income source" }).click();
+  const portfolioIncome = page.getByRole("group", { name: "Income source 1" });
+  await portfolioIncome.getByLabel("Income source").fill("Portfolio distributions");
+  await portfolioIncome.getByLabel("Monthly amount").fill("10000");
+  await portfolioIncome.getByLabel("Income-producing asset (optional)").selectOption({ label: "Taxable portfolio" });
+  await page.getByRole("button", { name: "Add income source" }).click();
+  const pension = page.getByRole("group", { name: "Income source 2" });
+  await pension.getByLabel("Income source").fill("Pension");
+  await pension.getByLabel("Monthly amount").fill("5000");
+  await expect(page.getByLabel("Federal effective income-tax rate")).toHaveValue("25");
+  await expect(page.getByLabel("Safety buffer")).toHaveValue("30");
+  await expect(page.getByTestId("recommended-estate-floor")).toHaveText("$10,600,000");
+  await page.getByLabel("Federal effective income-tax rate").fill("20");
+  await expect(page.getByTestId("recommended-estate-floor")).toHaveText("$10,437,500");
+  await page.getByLabel("Federal effective income-tax rate").fill("25");
+  await page.getByLabel("Safety buffer").fill("20");
+  await expect(page.getByTestId("recommended-estate-floor")).toHaveText("$10,400,000");
   await saveSection(page);
 
   expect(intakeRequests).toHaveLength(4);
@@ -91,8 +131,9 @@ test("audited ten-state rescue journey saves once, reuses answers, and generates
   await expect(page.locator(".workspace-aside, .conversation-history")).toHaveCount(0);
   await expect(page.locator("[data-summary-section='family']")).toContainText("Spouse");
   await expect(page.locator("[data-summary-section='family']")).toContainText("Children");
-  await expect(page.locator("[data-summary-section='planning_range']")).toContainText("$5 million to $10 million");
-  await expect(page.getByText("$5 million to $10 million", { exact: false })).toHaveCount(1);
+  await expect(page.locator("[data-summary-section='planning_range']")).toContainText("Taxable portfolio");
+  await expect(page.locator("[data-summary-section='planning_range']")).toContainText("$10,400,000");
+  await expect(page.getByText("$10,400,000", { exact: false })).toHaveCount(1);
 
   await page.getByRole("button", { name: "Confirm Planning Summary" }).click();
   await expect(page.getByRole("heading", { name: "Choose the direction for your Estate Blueprint" })).toBeVisible();
