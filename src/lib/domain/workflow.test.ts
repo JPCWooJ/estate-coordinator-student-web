@@ -488,11 +488,12 @@ describe("Matter Opening v0.4 workflow", () => {
       },
     );
 
-    expect(
-      buildPrincipalPlanningSummary(result.record).priorityContext,
-    ).toContainEqual({
-      outcome: "Intended transfer",
-      detail: "Transfer equally to the adult children.",
+    const priorities = buildPrincipalPlanningSummary(result.record).sections.find(
+      (section) => section.key === "priorities",
+    );
+    expect(priorities?.details).toContainEqual({
+      label: "Priority 1",
+      value: "Intended transfer — Transfer equally to the adult children.",
     });
   });
 
@@ -548,11 +549,12 @@ describe("Matter Opening v0.4 workflow", () => {
     );
 
     expect(completed.state.clarification).toBeNull();
-    expect(
-      buildPrincipalPlanningSummary(completed.record).priorityContext,
-    ).toContainEqual({
-      outcome: "Asset protection",
-      detail: "Protection from creditor and litigation risk.",
+    const priorities = buildPrincipalPlanningSummary(
+      completed.record,
+    ).sections.find((section) => section.key === "priorities");
+    expect(priorities?.details).toContainEqual({
+      label: "Priority 3",
+      value: "Asset protection — Protection from creditor and litigation risk.",
     });
     expect(confirmOpening(completed.record, completed.state).state.step).toBe(
       "BLUEPRINT_READY",
@@ -563,23 +565,28 @@ describe("Matter Opening v0.4 workflow", () => {
     const record = confirmationReadyRecord();
     const summary = buildPrincipalPlanningSummary(record);
     const serialized = JSON.stringify(summary);
+    const priorities = summary.sections.find((section) => section.key === "priorities");
+    const family = summary.sections.find((section) => section.key === "family");
+    const currentPlan = summary.sections.find((section) => section.key === "current_plan");
+    const timing = summary.sections.find((section) => section.key === "timing_context");
+    const team = summary.sections.find((section) => section.key === "team");
 
-    expect(summary.currentPlanSnapshot).toContain("2018");
-    expect(summary.peopleFlags).toEqual([]);
-    expect(summary.knownChanges).toContain("Moved primary residence to Florida.");
-    expect(summary.complexityFlags).toContain("Georgia rental");
-    expect(summary.contacts[0]?.name).toBe("Jordan Lee");
-    expect(summary.participants).toContain("Spouse");
-    expect(summary.topPriorities).toEqual([
-      "Intended transfer",
-      "Incapacity readiness",
-      "Tax minimization",
-    ]);
-    expect(summary.topPriorities.every((priority) => !/^\d+\./.test(priority))).toBe(
-      true,
+    expect(JSON.stringify(currentPlan)).toContain("2018");
+    expect(JSON.stringify(currentPlan)).toContain(
+      "Moved primary residence to Florida.",
     );
-    expect(summary.recommendedNextStep).toContain("Estate Blueprint");
-    expect(summary.recommendedNextStep).not.toMatch(/Stage\s+[1-7]/i);
+    expect(JSON.stringify(timing)).toContain("Georgia rental");
+    expect(JSON.stringify(family)).toContain("Spouse and adult children");
+    expect(team?.contacts?.map((contact) => contact.name)).toEqual([
+      "Jordan Lee",
+      "Spouse",
+    ]);
+    expect(priorities?.details.slice(0, 3).map((item) => item.value)).toEqual([
+      expect.stringContaining("Intended transfer"),
+      expect.stringContaining("Incapacity readiness"),
+      expect.stringContaining("Tax minimization"),
+    ]);
+    expect(summary.boundaryNote).not.toMatch(/Stage\s+[1-7]/i);
     expect(serialized).not.toContain("PLAN_UPDATE");
     expect(serialized).not.toContain("house_in_order");
     expect(serialized).not.toContain(record.house_in_order_concern);

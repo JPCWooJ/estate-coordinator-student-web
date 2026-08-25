@@ -174,11 +174,35 @@ test("audited ten-state rescue journey saves once, reuses answers, and generates
   ).toBe(4);
   await expect(page.getByRole("heading", { name: "Your Planning Summary" })).toBeVisible();
   await expect(page.locator(".workspace-aside, .conversation-history")).toHaveCount(0);
+  await expect(page.locator("[data-summary-section]")).toHaveCount(7);
+  await expect(page.locator("[data-summary-section='priorities']")).toContainText("Priority 1");
+  await expect(page.locator("[data-summary-section='priorities']")).toContainText("What success means");
   await expect(page.locator("[data-summary-section='family']")).toContainText("Spouse");
   await expect(page.locator("[data-summary-section='family']")).toContainText("Children");
+  await expect(page.locator("[data-summary-section='current_plan']")).toContainText("Moved to Florida");
+  await expect(page.locator("[data-summary-section='timing_context']")).toContainText("Florida");
   await expect(page.locator("[data-summary-section='planning_range']")).toContainText("Taxable portfolio");
   await expect(page.locator("[data-summary-section='planning_range']")).toContainText("$10,400,000");
+  const teamSummary = page.locator("[data-summary-section='team']");
+  await expect(teamSummary.getByRole("columnheader", { name: "Name" })).toBeVisible();
+  await expect(teamSummary.getByRole("columnheader", { name: "Contact" })).toBeVisible();
+  await expect(teamSummary.getByRole("columnheader", { name: "Role" })).toBeVisible();
+  await expect(teamSummary).toContainText("Jordan Lee");
+  await expect(teamSummary).toContainText("jordan@example.com");
+  await expect(teamSummary).toContainText("estate attorney");
+  await expect(page.locator("[data-summary-section='uncertainties']")).toContainText("Family readiness");
+  await expect(page.locator("[data-summary-section='uncertainties']")).toContainText("Not decided");
+  await expect(page.getByText("not legal or tax advice", { exact: false })).toBeVisible();
+  await expect(page.getByRole("heading", { name: /top three priorities|priority context|people who should help/i })).toHaveCount(0);
+  await expect(page.getByText("Protect my spouse and benefit our children fairly.", { exact: true })).toHaveCount(1);
+  await expect(page.getByText("Jordan Lee", { exact: true })).toHaveCount(1);
+  await expect(page.getByText("Not decided", { exact: true })).toHaveCount(1);
   await expect(page.getByText("$10,400,000", { exact: false })).toHaveCount(1);
+
+  await page.locator("[data-summary-section='current_plan']").getByRole("button", { name: "Correct current plan and material changes" }).click();
+  await expect(page.getByRole("heading", { name: "Current plan and planning context" })).toBeVisible();
+  await page.getByRole("button", { name: "Cancel edit" }).click();
+  await expect(page.getByRole("heading", { name: "Your Planning Summary" })).toBeVisible();
 
   await page.getByRole("button", { name: "Confirm Planning Summary" }).click();
   await expect(page.getByRole("heading", { name: "Choose the direction for your Estate Blueprint" })).toBeVisible();

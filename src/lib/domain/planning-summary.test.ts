@@ -14,7 +14,7 @@ function apply(record: ReturnType<typeof createInitialRecord>, submission: Omit<
 }
 
 describe("professional Planning Summary", () => {
-  it("synthesizes each material fact once from canonical intake", () => {
+  it("synthesizes the replacement Screen 7 baseline with each material fact once", () => {
     let record = createInitialRecord("aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa");
     record = apply(record, {
       section: "goals_family",
@@ -120,15 +120,25 @@ describe("professional Planning Summary", () => {
     });
 
     const summary = buildPrincipalPlanningSummary(record);
-    const serialized = JSON.stringify(summary.sections);
+    const serialized = JSON.stringify(summary);
 
     expect(summary.sections.map((section) => section.key)).toEqual([
       "priorities",
       "family",
-      "planning_context",
+      "current_plan",
+      "timing_context",
       "planning_range",
-      "team_continuity",
+      "team",
       "uncertainties",
+    ]);
+    expect(summary.sections.map((section) => section.title)).toEqual([
+      "Planning priorities and success",
+      "Family and beneficiary intent",
+      "Current plan and material changes",
+      "Timing, jurisdiction, and complexity",
+      "Planning range and governing constraints",
+      "Planning team and open roles",
+      "Material uncertainties",
     ]);
     for (const fact of [
       "KEEP-SPOUSE-SECURE",
@@ -149,5 +159,154 @@ describe("professional Planning Summary", () => {
       .toHaveLength(2);
     expect(serialized.split("30% safety buffer")).toHaveLength(2);
     expect(serialized).not.toContain("house_in_order");
+
+    const team = summary.sections.find((section) => section.key === "team");
+    expect(team?.contacts).toEqual([
+      {
+        name: "JORDAN-LEE",
+        affiliation: "Harbor Counsel",
+        contact: "jordan@example.com / 555-0100",
+        role: "estate attorney · Adviser",
+        responsibilities: "document review",
+      },
+    ]);
+    expect(summary.boundaryNote).toContain("not legal or tax advice");
+  });
+
+  it("uses canonical intake instead of contradictory legacy people fields", () => {
+    let record = createInitialRecord("bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb");
+    record = apply(record, {
+      section: "goals_family",
+      values: {
+        desiredOutcomes: ["intended_transfer"],
+        topPriorities: ["intended_transfer"],
+        successDefinition: "CANONICAL-SUCCESS",
+        beneficiaries: [{
+          nameOrGroup: "CANONICAL-BENEFICIARY",
+          relationship: "child",
+          role: "primary",
+          treatment: "equal treatment",
+          protectionNeeds: [],
+          readinessNotes: "ready now",
+        }],
+        materialCircumstances: "none identified",
+      },
+    });
+    record = apply(record, {
+      section: "team_continuity",
+      values: {
+        contacts: [{
+          name: "CANONICAL-CONTACT",
+          firmOrRelationship: "Trusted adviser",
+          role: "estate attorney",
+          email: "canonical@example.com",
+          phone: "555-0123",
+          primaryOrBackup: "adviser",
+          responsibilities: "coordinate implementation",
+        }],
+        missingProfessionalRoles: [],
+        continuityResponsibilities: ["investment oversight"],
+        specialAssetsOrPurposes: [],
+        readinessPlan: "annual family meeting",
+      },
+    });
+    record = {
+      ...record,
+      principal_definition_of_success: "LEGACY-SUCCESS",
+      people_and_interests_snapshot: "LEGACY-BENEFICIARY",
+      professional_and_family_contacts: [{
+        name: "LEGACY-CONTACT",
+        firm: "Legacy firm",
+        expertise: "legacy expertise",
+        estate_role: "legacy role",
+        email: "legacy@example.com",
+        telephone: "555-9999",
+        contact_trigger: "legacy trigger",
+        priority: "legacy priority",
+        missing_information: [],
+      }],
+      other_participants: [{
+        name: "LEGACY-PARTICIPANT",
+        relationship: "legacy relationship",
+        intended_role: "legacy role",
+        involvement_timing: "legacy timing",
+      }],
+    };
+
+    const serialized = JSON.stringify(buildPrincipalPlanningSummary(record));
+
+    expect(serialized).toContain("CANONICAL-SUCCESS");
+    expect(serialized).toContain("CANONICAL-BENEFICIARY");
+    expect(serialized).toContain("CANONICAL-CONTACT");
+    expect(serialized).not.toContain("LEGACY-SUCCESS");
+    expect(serialized).not.toContain("LEGACY-BENEFICIARY");
+    expect(serialized).not.toContain("LEGACY-CONTACT");
+    expect(serialized).not.toContain("LEGACY-PARTICIPANT");
+  });
+
+  it("turns canonical uncertainty metadata into human-facing language", () => {
+    const record = createInitialRecord("cccccccc-cccc-4ccc-8ccc-cccccccccccc");
+    record.canonical_intake = {
+      ...record.canonical_intake!,
+      fieldMeta: {
+        "goals.success": {
+          status: "unknown",
+          source: "structured_intake:goals_family",
+          confirmed: false,
+          confidence: "high",
+          lastUpdatedAt: new Date().toISOString(),
+          revision: 1,
+          decisionSupport: ["recommendation_constraints"],
+        },
+      },
+    };
+
+    const summary = buildPrincipalPlanningSummary(record);
+    const uncertainties = summary.sections.find(
+      (section) => section.key === "uncertainties",
+    );
+
+    expect(uncertainties?.details).toContainEqual({
+      label: "Definition of success",
+      value: "Not yet known",
+    });
+    expect(JSON.stringify(summary)).not.toContain("goals.success");
+  });
+
+  it("moves unresolved facts into Material uncertainties instead of repeating them", () => {
+    let record = createInitialRecord("dddddddd-dddd-4ddd-8ddd-dddddddddddd");
+    record = apply(record, {
+      section: "team_continuity",
+      values: {
+        contacts: [{
+          name: "ALEX-MORGAN",
+          firmOrRelationship: "Family adviser",
+          role: "trusted participant",
+          email: "",
+          phone: "",
+          primaryOrBackup: "participant",
+          responsibilities: "family coordination",
+        }],
+        missingProfessionalRoles: [],
+        continuityResponsibilities: ["investment oversight"],
+        specialAssetsOrPurposes: [],
+        readinessPlan: "not decided",
+      },
+    });
+
+    const summary = buildPrincipalPlanningSummary(record);
+    const team = summary.sections.find((section) => section.key === "team");
+    const uncertainties = summary.sections.find(
+      (section) => section.key === "uncertainties",
+    );
+
+    expect(team?.details.some((item) => item.label === "Readiness plan")).toBe(
+      false,
+    );
+    expect(uncertainties?.details).toContainEqual({
+      label: "Family readiness",
+      value: "Not decided",
+    });
+    expect(JSON.stringify(summary).toLowerCase().split("not decided")).toHaveLength(2);
   });
 });
