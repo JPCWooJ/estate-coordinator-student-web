@@ -4,6 +4,7 @@ import { FormEvent, useMemo, useState } from "react";
 
 import {
   calculateFinancialProfile,
+  DEFAULT_FINANCIAL_PLANNING_INPUTS,
   DEFAULT_FEDERAL_EFFECTIVE_TAX_RATE_PERCENT,
   DEFAULT_SAFETY_BUFFER_PERCENT,
   FinancialProfileInputsSchema,
@@ -11,6 +12,8 @@ import {
   type FinancialAssetEntry,
   type FinancialLiabilityCategory,
   type FinancialLiabilityEntry,
+  type FinancialPlanningInputs,
+  type FinancialPlanningStatus,
   type FinancialProfile,
   type OwnershipControlStatus,
   type RecurringIncomeSource,
@@ -102,6 +105,10 @@ function numberValue(value: string) {
   return value.trim() === "" ? Number.NaN : Number(value);
 }
 
+function nullableNumberValue(value: string) {
+  return value.trim() === "" ? null : Number(value);
+}
+
 export function FinancialIntakeForm({
   canonical,
   busy,
@@ -135,9 +142,29 @@ export function FinancialIntakeForm({
   const [federalTaxRatePercent, setFederalTaxRatePercent] = useState(
     String(
       profile?.lifestyle.federalEffectiveTaxRatePercent ??
-        DEFAULT_FEDERAL_EFFECTIVE_TAX_RATE_PERCENT,
+      DEFAULT_FEDERAL_EFFECTIVE_TAX_RATE_PERCENT,
     ),
   );
+  const [planning, setPlanning] = useState<FinancialPlanningInputs>(() => ({
+    ...DEFAULT_FINANCIAL_PLANNING_INPUTS,
+    ...profile?.planning,
+    materialAssetsStatus:
+      profile?.planning.materialAssetsStatus ?? "not_decided",
+    liabilitiesStatus:
+      profile?.planning.liabilitiesStatus ?? "not_decided",
+    lifetimeSecurityFloor: {
+      ...DEFAULT_FINANCIAL_PLANNING_INPUTS.lifetimeSecurityFloor,
+      ...profile?.planning.lifetimeSecurityFloor,
+    },
+    retainedControlRequirement: {
+      ...DEFAULT_FINANCIAL_PLANNING_INPUTS.retainedControlRequirement,
+      ...profile?.planning.retainedControlRequirement,
+    },
+    extraordinaryFutureObligations: {
+      ...DEFAULT_FINANCIAL_PLANNING_INPUTS.extraordinaryFutureObligations,
+      ...profile?.planning.extraordinaryFutureObligations,
+    },
+  }));
   const [localError, setLocalError] = useState("");
 
   const parsedInputs = useMemo(
@@ -160,6 +187,7 @@ export function FinancialIntakeForm({
           safetyBufferPercent: numberValue(safetyBufferPercent),
           federalEffectiveTaxRatePercent: numberValue(federalTaxRatePercent),
         },
+        planning,
       }),
     [
       assets,
@@ -167,6 +195,7 @@ export function FinancialIntakeForm({
       incomeSources,
       liabilities,
       monthlyExpenses,
+      planning,
       safetyBufferPercent,
     ],
   );
@@ -196,8 +225,18 @@ export function FinancialIntakeForm({
       estimatedNetEstate: totalAssets - totalLiabilities,
     };
   }, [assets, liabilities]);
+  const assetTotalAvailable = ["provided", "none"].includes(
+    planning.materialAssetsStatus,
+  );
+  const liabilityTotalAvailable = ["provided", "none"].includes(
+    planning.liabilitiesStatus,
+  );
 
   function addAsset() {
+    setPlanning((current) => ({
+      ...current,
+      materialAssetsStatus: "provided",
+    }));
     setAssets((current) => [
       ...current,
       {
@@ -212,6 +251,10 @@ export function FinancialIntakeForm({
   }
 
   function addLiability() {
+    setPlanning((current) => ({
+      ...current,
+      liabilitiesStatus: "provided",
+    }));
     setLiabilities((current) => [
       ...current,
       {
@@ -241,7 +284,7 @@ export function FinancialIntakeForm({
     event.preventDefault();
     if (!parsedInputs.success) {
       setLocalError(
-        "Complete each added row with a non-negative value. Tax must be below 100%, and the safety buffer cannot exceed 200%.",
+        "Complete each added row and any selected planning detail. Values must be non-negative, tax must be below 100%, and the safety buffer cannot exceed 200%.",
       );
       return;
     }
@@ -516,9 +559,9 @@ export function FinancialIntakeForm({
         </div>
 
         <dl className="financial-totals" aria-live="polite">
-          <div><dt>Total assets</dt><dd data-testid="total-assets">{currency(balanceSheetTotals?.totalAssets ?? null)}</dd></div>
-          <div><dt>Total liabilities</dt><dd data-testid="total-liabilities">{currency(balanceSheetTotals?.totalLiabilities ?? null)}</dd></div>
-          <div><dt>Estimated net estate</dt><dd data-testid="net-estate">{currency(balanceSheetTotals?.estimatedNetEstate ?? null)}</dd></div>
+          <div><dt>Total assets</dt><dd data-testid="total-assets">{currency(assetTotalAvailable ? (balanceSheetTotals?.totalAssets ?? null) : null)}</dd></div>
+          <div><dt>Total liabilities</dt><dd data-testid="total-liabilities">{currency(liabilityTotalAvailable ? (balanceSheetTotals?.totalLiabilities ?? null) : null)}</dd></div>
+          <div><dt>Estimated net estate</dt><dd data-testid="net-estate">{currency(assetTotalAvailable && liabilityTotalAvailable ? (balanceSheetTotals?.estimatedNetEstate ?? null) : null)}</dd></div>
         </dl>
       </section>
 
@@ -691,6 +734,261 @@ export function FinancialIntakeForm({
             divided by 4%, increased by the selected safety buffer, then added to retained
             assets that you linked to recurring income.
           </p>
+        </div>
+      </section>
+
+      <section className="financial-module" aria-labelledby="planning-boundaries-title">
+        <h2 id="planning-boundaries-title">Planning boundaries</h2>
+        <p>
+          Confirm how each of the seven planning fields should be carried into
+          your Estate Blueprint. None, unknown, and not decided are saved as
+          answers and will not trigger another financial question.
+        </p>
+
+        <div className="intake-grid financial-boundary-grid">
+          <label className="intake-field">
+            <span>Material assets</span>
+            <small>Use the itemized balance sheet when it is complete enough for planning.</small>
+            <select
+              value={planning.materialAssetsStatus}
+              onChange={(event) => {
+                const status = event.target.value as FinancialPlanningStatus;
+                setPlanning((current) => ({
+                  ...current,
+                  materialAssetsStatus: status,
+                }));
+                if (status === "none") setAssets([]);
+              }}
+              required
+            >
+              <option value="provided">Itemized above</option>
+              <option value="none">None</option>
+              <option value="unknown">Unknown</option>
+              <option value="not_decided">Not decided</option>
+            </select>
+          </label>
+
+          <label className="intake-field">
+            <span>Liabilities</span>
+            <small>Choose none only when there are no material liabilities to include.</small>
+            <select
+              value={planning.liabilitiesStatus}
+              onChange={(event) => {
+                const status = event.target.value as FinancialPlanningStatus;
+                setPlanning((current) => ({
+                  ...current,
+                  liabilitiesStatus: status,
+                }));
+                if (status === "none") setLiabilities([]);
+              }}
+              required
+            >
+              <option value="provided">Itemized above</option>
+              <option value="none">None</option>
+              <option value="unknown">Unknown</option>
+              <option value="not_decided">Not decided</option>
+            </select>
+          </label>
+
+          <label className="intake-field">
+            <span>Expected inheritance</span>
+            <small>Use a broad range; account-level detail is not needed.</small>
+            <select
+              value={planning.expectedInheritanceRange}
+              onChange={(event) =>
+                setPlanning((current) => ({
+                  ...current,
+                  expectedInheritanceRange: event.target.value as FinancialPlanningInputs["expectedInheritanceRange"],
+                }))
+              }
+              required
+            >
+              <option value="none">None expected</option>
+              <option value="under_1m">Under $1 million</option>
+              <option value="1m_to_5m">$1 million to $5 million</option>
+              <option value="5m_to_10m">$5 million to $10 million</option>
+              <option value="10m_to_25m">$10 million to $25 million</option>
+              <option value="25m_to_50m">$25 million to $50 million</option>
+              <option value="over_50m">Over $50 million</option>
+              <option value="unknown">Unknown</option>
+              <option value="not_decided">Not decided</option>
+            </select>
+          </label>
+
+          <label className="intake-field">
+            <span>Lifetime-security floor</span>
+            <small>Use the calculation above or enter a different planning amount.</small>
+            <select
+              value={planning.lifetimeSecurityFloor.selection}
+              onChange={(event) =>
+                setPlanning((current) => ({
+                  ...current,
+                  lifetimeSecurityFloor: {
+                    ...current.lifetimeSecurityFloor,
+                    selection: event.target.value as FinancialPlanningInputs["lifetimeSecurityFloor"]["selection"],
+                  },
+                }))
+              }
+              required
+            >
+              <option value="calculated">Use calculated recommendation</option>
+              <option value="custom">Use a different amount</option>
+              <option value="unknown">Unknown</option>
+              <option value="not_decided">Not decided</option>
+            </select>
+          </label>
+
+          {planning.lifetimeSecurityFloor.selection === "custom" ? (
+            <label className="intake-field boundary-detail-field">
+              <span>Custom lifetime-security floor</span>
+              <input
+                type="number"
+                inputMode="decimal"
+                min="0"
+                step="1"
+                value={planning.lifetimeSecurityFloor.customAmount ?? ""}
+                onChange={(event) =>
+                  setPlanning((current) => ({
+                    ...current,
+                    lifetimeSecurityFloor: {
+                      ...current.lifetimeSecurityFloor,
+                      customAmount: nullableNumberValue(event.target.value),
+                    },
+                  }))
+                }
+                required
+              />
+            </label>
+          ) : null}
+
+          <label className="intake-field">
+            <span>Assets counted toward the security floor</span>
+            <small>The calculated option uses assets linked to recurring income that remain under your control.</small>
+            <select
+              value={planning.assetsCountedTowardFloor}
+              onChange={(event) =>
+                setPlanning((current) => ({
+                  ...current,
+                  assetsCountedTowardFloor: event.target.value as FinancialPlanningInputs["assetsCountedTowardFloor"],
+                }))
+              }
+              required
+            >
+              <option value="linked_income_producing_assets">Use linked retained income-producing assets</option>
+              <option value="none">None</option>
+              <option value="unknown">Unknown</option>
+              <option value="not_decided">Not decided</option>
+            </select>
+          </label>
+
+          <label className="intake-field">
+            <span>Retained-control requirement</span>
+            <small>Identify any assets or control that planning should preserve.</small>
+            <select
+              value={planning.retainedControlRequirement.selection}
+              onChange={(event) =>
+                setPlanning((current) => ({
+                  ...current,
+                  retainedControlRequirement: {
+                    ...current.retainedControlRequirement,
+                    selection: event.target.value as FinancialPlanningInputs["retainedControlRequirement"]["selection"],
+                  },
+                }))
+              }
+              required
+            >
+              <option value="provided">Retain specified assets or control</option>
+              <option value="none">No special retained-control requirement</option>
+              <option value="unknown">Unknown</option>
+              <option value="not_decided">Not decided</option>
+            </select>
+          </label>
+
+          {planning.retainedControlRequirement.selection === "provided" ? (
+            <label className="intake-field boundary-detail-field">
+              <span>What should remain under your control?</span>
+              <textarea
+                rows={3}
+                maxLength={500}
+                value={planning.retainedControlRequirement.detail}
+                onChange={(event) =>
+                  setPlanning((current) => ({
+                    ...current,
+                    retainedControlRequirement: {
+                      ...current.retainedControlRequirement,
+                      detail: event.target.value,
+                    },
+                  }))
+                }
+                required
+              />
+            </label>
+          ) : null}
+
+          <label className="intake-field">
+            <span>Extraordinary future obligations</span>
+            <small>Examples include education support, continuing family support, or a business capital need.</small>
+            <select
+              value={planning.extraordinaryFutureObligations.selection}
+              onChange={(event) =>
+                setPlanning((current) => ({
+                  ...current,
+                  extraordinaryFutureObligations: {
+                    ...current.extraordinaryFutureObligations,
+                    selection: event.target.value as FinancialPlanningInputs["extraordinaryFutureObligations"]["selection"],
+                  },
+                }))
+              }
+              required
+            >
+              <option value="none">None</option>
+              <option value="provided">Provide details</option>
+              <option value="unknown">Unknown</option>
+              <option value="not_decided">Not decided</option>
+            </select>
+          </label>
+
+          {planning.extraordinaryFutureObligations.selection === "provided" ? (
+            <div className="boundary-detail-field boundary-detail-grid">
+              <label className="intake-field">
+                <span>Obligation</span>
+                <textarea
+                  rows={3}
+                  maxLength={500}
+                  value={planning.extraordinaryFutureObligations.detail}
+                  onChange={(event) =>
+                    setPlanning((current) => ({
+                      ...current,
+                      extraordinaryFutureObligations: {
+                        ...current.extraordinaryFutureObligations,
+                        detail: event.target.value,
+                      },
+                    }))
+                  }
+                  required
+                />
+              </label>
+              <label className="intake-field">
+                <span>Approximate amount, if known</span>
+                <input
+                  type="number"
+                  inputMode="decimal"
+                  min="0"
+                  step="1"
+                  value={planning.extraordinaryFutureObligations.approximateValue ?? ""}
+                  onChange={(event) =>
+                    setPlanning((current) => ({
+                      ...current,
+                      extraordinaryFutureObligations: {
+                        ...current.extraordinaryFutureObligations,
+                        approximateValue: nullableNumberValue(event.target.value),
+                      },
+                    }))
+                  }
+                />
+              </label>
+            </div>
+          ) : null}
         </div>
       </section>
 

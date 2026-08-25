@@ -228,6 +228,25 @@ describe("canonical grouped intake", () => {
             safetyBufferPercent: 30,
             federalEffectiveTaxRatePercent: 25,
           },
+          planning: {
+            materialAssetsStatus: "provided",
+            liabilitiesStatus: "provided",
+            expectedInheritanceRange: "none",
+            lifetimeSecurityFloor: {
+              selection: "calculated",
+              customAmount: null,
+            },
+            assetsCountedTowardFloor: "linked_income_producing_assets",
+            retainedControlRequirement: {
+              selection: "provided",
+              detail: "retain the home and investment portfolio",
+            },
+            extraordinaryFutureObligations: {
+              selection: "none",
+              detail: "",
+              approximateValue: null,
+            },
+          },
         },
       }),
       NOW,
@@ -255,8 +274,12 @@ describe("canonical grouped intake", () => {
     expect(final.canonical_intake!.financialRange).toMatchObject({
       materialAssetsRange: "$8,000,000 total assets (structured estimate)",
       liabilitiesRange: "$500,000 total liabilities (structured estimate)",
+      expectedInheritanceRange: "none",
       lifetimeSecurityFloor:
         "$13,200,000 recommended controllable-estate floor",
+      assetsCountedTowardFloor: "Investment portfolio ($8,000,000)",
+      retainedControlRequirement: "retain the home and investment portfolio",
+      extraordinaryFutureObligations: "none",
     });
     expect(final.canonical_intake!.currentSection).toBe("planning_summary");
     expect(final.canonical_intake!.completedSections).toEqual([
@@ -330,5 +353,64 @@ describe("canonical grouped intake", () => {
         role: "estate attorney",
       }),
     ]);
+  });
+
+  it("projects all seven planning fields from explicit states without inventing missing answers", () => {
+    const result = applyStructuredIntake(
+      createInitialRecord(MATTER_ID),
+      submission({
+        section: "financial_range",
+        values: {
+          assets: [],
+          liabilities: [],
+          lifestyle: {
+            monthlyExpenses: 8_000,
+            incomeSources: [],
+            safetyBufferPercent: 30,
+            federalEffectiveTaxRatePercent: 25,
+          },
+          planning: {
+            materialAssetsStatus: "unknown",
+            liabilitiesStatus: "none",
+            expectedInheritanceRange: "unknown",
+            lifetimeSecurityFloor: {
+              selection: "not_decided",
+              customAmount: null,
+            },
+            assetsCountedTowardFloor: "unknown",
+            retainedControlRequirement: {
+              selection: "not_decided",
+              detail: "",
+            },
+            extraordinaryFutureObligations: {
+              selection: "none",
+              detail: "",
+              approximateValue: null,
+            },
+          },
+        },
+      }),
+      NOW,
+    );
+
+    expect(result.record.canonical_intake?.financialRange).toEqual({
+      materialAssetsRange: "unknown",
+      liabilitiesRange: "none",
+      expectedInheritanceRange: "unknown",
+      lifetimeSecurityFloor: "not decided",
+      assetsCountedTowardFloor: "unknown",
+      retainedControlRequirement: "not decided",
+      extraordinaryFutureObligations: "none",
+    });
+    expect(result.record.canonical_intake?.fieldMeta).toMatchObject({
+      "financial.assets": { status: "unknown" },
+      "financial.liabilities": { status: "answered" },
+      "financial.expected_inheritance": { status: "unknown" },
+      "financial.security_floor": { status: "not_decided" },
+      "financial.assets_counted_toward_floor": { status: "unknown" },
+      "financial.retained_control": { status: "not_decided" },
+      "financial.extraordinary_obligations": { status: "answered" },
+    });
+    expect(intakeSectionForRecord(result.record)).not.toBe("financial_range");
   });
 });

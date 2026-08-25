@@ -26,6 +26,30 @@ async function responseJson<T>(response: Response, fallback: string): Promise<T>
   return data;
 }
 
+export async function postStructuredIntakeWithReconciliation(
+  url: string,
+  submission: StructuredIntakeSubmission,
+  request: typeof fetch = fetch,
+) {
+  const body = JSON.stringify(submission);
+  const post = () =>
+    request(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body,
+    });
+
+  let response: Response;
+  try {
+    response = await post();
+  } catch {
+    return post();
+  }
+  return response.status >= 500 && response.status <= 599
+    ? post()
+    : response;
+}
+
 async function loadMatter(matterId: string) {
   const [sessionResponse, matterResponse] = await Promise.all([
     fetch("/api/session"),
@@ -100,11 +124,16 @@ export function MatterExperience({ matterId }: { matterId: string }) {
       pendingIntakeOperations.current[submission.section] ?? submission.operationId;
     pendingIntakeOperations.current[submission.section] = operationId;
     try {
-      const response = await fetch(`/api/matters/${matterId}/intake`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ ...submission, operationId }),
-      });
+      const url = `/api/matters/${matterId}/intake`;
+      const idempotentSubmission = { ...submission, operationId };
+      const response =
+        submission.section === "financial_range"
+          ? await postStructuredIntakeWithReconciliation(url, idempotentSubmission)
+          : await fetch(url, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify(idempotentSubmission),
+            });
       const payload = await responseJson<{ matter: MatterView }>(response, "This section could not be saved. Your entries remain here.");
       delete pendingIntakeOperations.current[submission.section];
       setMatter(payload.matter);

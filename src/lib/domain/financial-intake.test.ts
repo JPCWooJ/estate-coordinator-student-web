@@ -1,11 +1,50 @@
 import { describe, expect, it } from "vitest";
 
-import { calculateFinancialProfile } from "./financial-intake";
+import {
+  calculateFinancialProfile,
+  FinancialProfileInputsSchema,
+} from "./financial-intake";
 
 const BROKERAGE_ID = "11111111-1111-4111-8111-111111111111";
 const RESIDENCE_ID = "22222222-2222-4222-8222-222222222222";
 
 describe("structured financial intake calculations", () => {
+  it("preserves the explicit seven-field planning selections alongside the detailed inputs", () => {
+    const planning = {
+      materialAssetsStatus: "unknown",
+      liabilitiesStatus: "none",
+      expectedInheritanceRange: "not_decided",
+      lifetimeSecurityFloor: {
+        selection: "not_decided",
+        customAmount: null,
+      },
+      assetsCountedTowardFloor: "unknown",
+      retainedControlRequirement: {
+        selection: "not_decided",
+        detail: "",
+      },
+      extraordinaryFutureObligations: {
+        selection: "none",
+        detail: "",
+        approximateValue: null,
+      },
+    };
+
+    const parsed = FinancialProfileInputsSchema.parse({
+      assets: [],
+      liabilities: [],
+      lifestyle: {
+        monthlyExpenses: 8_000,
+        incomeSources: [],
+        safetyBufferPercent: 30,
+        federalEffectiveTaxRatePercent: 25,
+      },
+      planning,
+    });
+
+    expect(parsed).toMatchObject({ planning });
+  });
+
   it("calculates the balance sheet and default-buffer security requirement deterministically", () => {
     const result = calculateFinancialProfile({
       assets: [

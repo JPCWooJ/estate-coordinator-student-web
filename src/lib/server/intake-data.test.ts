@@ -130,6 +130,25 @@ describe("structured intake persistence", () => {
             safetyBufferPercent: 40,
             federalEffectiveTaxRatePercent: 25,
           },
+          planning: {
+            materialAssetsStatus: "provided",
+            liabilitiesStatus: "provided",
+            expectedInheritanceRange: "unknown",
+            lifetimeSecurityFloor: {
+              selection: "calculated",
+              customAmount: null,
+            },
+            assetsCountedTowardFloor: "linked_income_producing_assets",
+            retainedControlRequirement: {
+              selection: "provided",
+              detail: "retain control of the income fund",
+            },
+            extraordinaryFutureObligations: {
+              selection: "not_decided",
+              detail: "",
+              approximateValue: null,
+            },
+          },
         },
       },
     });
@@ -154,6 +173,16 @@ describe("structured intake persistence", () => {
         monthlyExpenses: 25_000,
         safetyBufferPercent: 40,
         federalEffectiveTaxRatePercent: 25,
+      },
+      planning: {
+        expectedInheritanceRange: "unknown",
+        retainedControlRequirement: {
+          selection: "provided",
+          detail: "retain control of the income fund",
+        },
+        extraordinaryFutureObligations: {
+          selection: "not_decided",
+        },
       },
       calculations: {
         totalAssets: 3_000_000,

@@ -145,6 +145,25 @@ function submissions(): StructuredIntakeSubmission[] {
           safetyBufferPercent: 30,
           federalEffectiveTaxRatePercent: 25,
         },
+        planning: {
+          materialAssetsStatus: "provided",
+          liabilitiesStatus: "provided",
+          expectedInheritanceRange: "none",
+          lifetimeSecurityFloor: {
+            selection: "calculated",
+            customAmount: null,
+          },
+          assetsCountedTowardFloor: "linked_income_producing_assets",
+          retainedControlRequirement: {
+            selection: "provided",
+            detail: "retain the Miami home and taxable portfolio",
+          },
+          extraordinaryFutureObligations: {
+            selection: "none",
+            detail: "",
+            approximateValue: null,
+          },
+        },
       },
     },
   ];
@@ -181,16 +200,14 @@ describe("MVP rescue normal path", () => {
     expect(matter.blueprintState?.planning_baseline).toEqual({
       material_assets_range: "$10,000,000 total assets (structured estimate)",
       liabilities_range: "$500,000 total liabilities (structured estimate)",
-      expected_inheritance_range:
-        "not assessed in this structured planning-level security calculation",
+      expected_inheritance_range: "none",
       lifetime_security_floor:
         "$10,600,000 recommended controllable-estate floor",
       assets_counted_toward_floor:
         "Taxable portfolio ($8,000,000)",
       retained_control_requirement:
-        "retain the recommended controllable-estate floor, including $8,000,000 of user-identified income-producing assets",
-      extraordinary_future_obligations:
-        "reflected only when entered in structured liabilities or recurring monthly expenses",
+        "retain the Miami home and taxable portfolio",
+      extraordinary_future_obligations: "none",
     });
     expect(matter.record.canonical_intake?.financialProfile?.calculations)
       .toMatchObject({

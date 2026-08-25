@@ -90,11 +90,117 @@ export type LifestyleSecurityInputs = z.infer<
   typeof LifestyleSecurityInputsSchema
 >;
 
+export const FinancialPlanningStatusSchema = z.enum([
+  "provided",
+  "none",
+  "unknown",
+  "not_decided",
+]);
+export type FinancialPlanningStatus = z.infer<
+  typeof FinancialPlanningStatusSchema
+>;
+
+export const ExpectedInheritanceRangeSchema = z.enum([
+  "none",
+  "under_1m",
+  "1m_to_5m",
+  "5m_to_10m",
+  "10m_to_25m",
+  "25m_to_50m",
+  "over_50m",
+  "unknown",
+  "not_decided",
+]);
+
+export const FinancialPlanningInputsSchema = z
+  .object({
+    materialAssetsStatus: FinancialPlanningStatusSchema,
+    liabilitiesStatus: FinancialPlanningStatusSchema,
+    expectedInheritanceRange: ExpectedInheritanceRangeSchema,
+    lifetimeSecurityFloor: z.object({
+      selection: z.enum(["calculated", "custom", "unknown", "not_decided"]),
+      customAmount: ApproximateValueSchema.nullable(),
+    }),
+    assetsCountedTowardFloor: z.enum([
+      "linked_income_producing_assets",
+      "none",
+      "unknown",
+      "not_decided",
+    ]),
+    retainedControlRequirement: z.object({
+      selection: z.enum(["provided", "none", "unknown", "not_decided"]),
+      detail: z.string().trim().max(500),
+    }),
+    extraordinaryFutureObligations: z.object({
+      selection: z.enum(["provided", "none", "unknown", "not_decided"]),
+      detail: z.string().trim().max(500),
+      approximateValue: ApproximateValueSchema.nullable(),
+    }),
+  })
+  .superRefine((planning, context) => {
+    if (
+      planning.lifetimeSecurityFloor.selection === "custom" &&
+      planning.lifetimeSecurityFloor.customAmount === null
+    ) {
+      context.addIssue({
+        code: "custom",
+        path: ["lifetimeSecurityFloor", "customAmount"],
+        message: "Enter the custom lifetime-security floor.",
+      });
+    }
+    if (
+      planning.retainedControlRequirement.selection === "provided" &&
+      !planning.retainedControlRequirement.detail
+    ) {
+      context.addIssue({
+        code: "custom",
+        path: ["retainedControlRequirement", "detail"],
+        message: "Describe the assets or control that planning should retain.",
+      });
+    }
+    if (
+      planning.extraordinaryFutureObligations.selection === "provided" &&
+      !planning.extraordinaryFutureObligations.detail
+    ) {
+      context.addIssue({
+        code: "custom",
+        path: ["extraordinaryFutureObligations", "detail"],
+        message: "Describe the extraordinary future obligation.",
+      });
+    }
+  });
+export type FinancialPlanningInputs = z.infer<
+  typeof FinancialPlanningInputsSchema
+>;
+
+export const DEFAULT_FINANCIAL_PLANNING_INPUTS: FinancialPlanningInputs = {
+  materialAssetsStatus: "provided",
+  liabilitiesStatus: "provided",
+  expectedInheritanceRange: "not_decided",
+  lifetimeSecurityFloor: {
+    selection: "calculated",
+    customAmount: null,
+  },
+  assetsCountedTowardFloor: "linked_income_producing_assets",
+  retainedControlRequirement: {
+    selection: "not_decided",
+    detail: "",
+  },
+  extraordinaryFutureObligations: {
+    selection: "not_decided",
+    detail: "",
+    approximateValue: null,
+  },
+};
+
 export const FinancialProfileInputsSchema = z
   .object({
     assets: z.array(FinancialAssetEntrySchema).max(100),
     liabilities: z.array(FinancialLiabilityEntrySchema).max(100),
     lifestyle: LifestyleSecurityInputsSchema,
+    planning: FinancialPlanningInputsSchema.default(
+      DEFAULT_FINANCIAL_PLANNING_INPUTS,
+    ),
   })
   .superRefine((input, context) => {
     const assetIds = new Set(input.assets.map((asset) => asset.id));
@@ -109,6 +215,9 @@ export const FinancialProfileInputsSchema = z
     });
   });
 export type FinancialProfileInputs = z.infer<
+  typeof FinancialProfileInputsSchema
+>;
+export type FinancialProfileInput = z.input<
   typeof FinancialProfileInputsSchema
 >;
 
@@ -162,7 +271,7 @@ function dollars(value: number) {
 }
 
 export function calculateFinancialProfile(
-  input: FinancialProfileInputs,
+  input: FinancialProfileInput,
 ): FinancialCalculations {
   const parsed = FinancialProfileInputsSchema.parse(input);
   const totalAssets = parsed.assets.reduce(
@@ -216,7 +325,7 @@ export function calculateFinancialProfile(
 }
 
 export function createFinancialProfile(
-  input: FinancialProfileInputs,
+  input: FinancialProfileInput,
 ): FinancialProfile {
   const parsed = FinancialProfileInputsSchema.parse(input);
   return FinancialProfileSchema.parse({

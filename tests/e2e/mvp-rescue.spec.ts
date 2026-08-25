@@ -17,7 +17,8 @@ async function saveSection(page: Page) {
   const responsePromise = page.waitForResponse(
     (response) =>
       response.url().includes("/intake") &&
-      response.request().method() === "POST",
+      response.request().method() === "POST" &&
+      response.ok(),
   );
   await page.getByRole("button", { name: "Save and continue" }).click();
   const response = await responsePromise;
@@ -30,11 +31,35 @@ test("audited ten-state rescue journey saves once, reuses answers, and generates
 }) => {
   const browserErrors: string[] = [];
   const intakeRequests: string[] = [];
+  const financialSaveBodies: string[] = [];
+  let simulatedCommittedResponseLoss = false;
   page.on("pageerror", (error) => browserErrors.push(error.message));
   page.on("request", (request) => {
     if (request.url().includes("/intake") && request.method() === "POST") {
       intakeRequests.push(request.postData() ?? "");
     }
+  });
+  await page.route("**/api/matters/*/intake", async (route) => {
+    const body = route.request().postDataJSON() as {
+      section?: string;
+    };
+    if (body.section !== "financial_range") {
+      await route.continue();
+      return;
+    }
+    financialSaveBodies.push(route.request().postData() ?? "");
+    if (!simulatedCommittedResponseLoss) {
+      simulatedCommittedResponseLoss = true;
+      const committed = await route.fetch();
+      expect(committed.ok(), await committed.text()).toBe(true);
+      await route.fulfill({
+        status: 502,
+        contentType: "application/json",
+        body: JSON.stringify({ error: "Response lost after commit." }),
+      });
+      return;
+    }
+    await route.continue();
   });
 
   await resetAndSignIn(page);
@@ -82,6 +107,8 @@ test("audited ten-state rescue journey saves once, reuses answers, and generates
   await expect(page.getByRole("heading", { name: "Estate Balance Sheet" })).toBeVisible();
   await expect(page.locator(".matter-topbar")).toContainText("Financial foundation");
   await expect(page.locator(".progress-copy")).toContainText("Financial foundation");
+  await expect(page.getByLabel("Material assets")).toHaveValue("not_decided");
+  await expect(page.getByLabel(/^Liabilities/)).toHaveValue("not_decided");
   await page.getByRole("button", { name: "Add asset" }).click();
   const brokerage = page.getByRole("group", { name: "Asset 1" });
   await brokerage.getByLabel("Asset category").selectOption("brokerage_accounts");
@@ -124,9 +151,27 @@ test("audited ten-state rescue journey saves once, reuses answers, and generates
   await page.getByLabel("Federal effective income-tax rate").fill("25");
   await page.getByLabel("Safety buffer").fill("20");
   await expect(page.getByTestId("recommended-estate-floor")).toHaveText("$10,400,000");
+  await expect(page.getByRole("heading", { name: "Planning boundaries" })).toBeVisible();
+  await expect(page.getByLabel("Material assets")).toHaveValue("provided");
+  await expect(page.getByLabel(/^Liabilities/)).toHaveValue("provided");
+  await page.getByLabel("Expected inheritance").selectOption("none");
+  await expect(page.getByLabel("Lifetime-security floor")).toHaveValue("calculated");
+  await expect(page.getByLabel("Assets counted toward the security floor")).toHaveValue("linked_income_producing_assets");
+  await page.getByLabel("Retained-control requirement").selectOption("provided");
+  await page.getByLabel("What should remain under your control?").fill("Retain the Miami home and taxable portfolio.");
+  await page.getByLabel("Extraordinary future obligations").selectOption("none");
   await saveSection(page);
 
-  expect(intakeRequests).toHaveLength(4);
+  expect(financialSaveBodies).toHaveLength(2);
+  expect(financialSaveBodies[0]).toBe(financialSaveBodies[1]);
+  expect(intakeRequests).toHaveLength(5);
+  expect(
+    new Set(
+      intakeRequests.map((request) =>
+        String((JSON.parse(request) as { operationId: string }).operationId),
+      ),
+    ).size,
+  ).toBe(4);
   await expect(page.getByRole("heading", { name: "Your Planning Summary" })).toBeVisible();
   await expect(page.locator(".workspace-aside, .conversation-history")).toHaveCount(0);
   await expect(page.locator("[data-summary-section='family']")).toContainText("Spouse");

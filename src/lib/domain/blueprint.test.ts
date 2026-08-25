@@ -7,6 +7,7 @@ import {
   applyEvidenceTreatment,
   applyRecommendationResponse,
   BlueprintAnswerInterpretation,
+  BlueprintAnswerInterpretationSchema,
   buildDecisionRecord,
   createInitialBlueprintState,
   DecisionDisposition,
@@ -190,8 +191,7 @@ describe("Estate Blueprint internal gates 1-5", () => {
       [],
     ).state;
 
-    const answered = applyBlueprintAnswer(
-      state,
+    const interpreted = BlueprintAnswerInterpretationSchema.parse(
       acceptedPatch({
         planning_baseline: {
           material_assets_range: null,
@@ -205,7 +205,8 @@ describe("Estate Blueprint internal gates 1-5", () => {
         beneficiary_outcomes: null,
         fiduciary_continuity_outcomes: null,
       }),
-    ).state;
+    );
+    const answered = applyBlueprintAnswer(state, interpreted).state;
 
     expect(answered.planning_baseline).toEqual(completeBaseline);
     expect(evaluateBlueprint(answered, []).state.current_gate).toBe(4);

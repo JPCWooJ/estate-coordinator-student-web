@@ -147,7 +147,10 @@ export const StructuredIntakeSubmissionSchema = z.discriminatedUnion("section", 
     values: FinancialProfileInputsSchema,
   }),
 ]);
-export type StructuredIntakeSubmission = z.infer<
+export type StructuredIntakeSubmission = z.input<
+  typeof StructuredIntakeSubmissionSchema
+>;
+type ParsedStructuredIntakeSubmission = z.output<
   typeof StructuredIntakeSubmissionSchema
 >;
 
@@ -201,10 +204,24 @@ const DECISION_SUPPORT: Record<EditableSection, Record<string, string[]>> = {
   financial_range: {
     "financial.assets": ["planning_exposure", "transfer_capacity"],
     "financial.liabilities": ["transfer_capacity", "estate_liquidity"],
+    "financial.expected_inheritance": [
+      "planning_exposure",
+      "transfer_capacity",
+      "evidence_checkpoint",
+    ],
     "financial.monthly_expenses": ["lifetime_security", "transfer_capacity"],
     "financial.recurring_income": ["lifetime_security", "transfer_capacity"],
     "financial.planning_assumptions": ["lifetime_security"],
     "financial.security_floor": ["lifetime_security", "transfer_strategy"],
+    "financial.assets_counted_toward_floor": [
+      "lifetime_security",
+      "transfer_strategy",
+    ],
+    "financial.retained_control": ["transfer_capacity", "transfer_strategy"],
+    "financial.extraordinary_obligations": [
+      "lifetime_security",
+      "transfer_capacity",
+    ],
   },
 };
 
@@ -213,8 +230,14 @@ function statusFor(value: string | string[]): IntakeFieldStatus {
   const normalized = value.trim().toLowerCase();
   if (!normalized) return "missing";
   if (normalized === "unknown" || normalized === "not sure") return "unknown";
-  if (normalized === "not decided") return "not_decided";
-  if (normalized === "not applicable" || normalized === "n/a") {
+  if (normalized === "not decided" || normalized === "not_decided") {
+    return "not_decided";
+  }
+  if (
+    normalized === "not applicable" ||
+    normalized === "not_applicable" ||
+    normalized === "n/a"
+  ) {
     return "not_applicable";
   }
   return "answered";
@@ -296,7 +319,7 @@ function priorityDetail(
 }
 
 function sectionMetaValues(
-  submission: StructuredIntakeSubmission,
+  submission: ParsedStructuredIntakeSubmission,
 ): Record<string, string | string[]> {
   if (submission.section === "goals_family") {
     return {
@@ -338,13 +361,11 @@ function sectionMetaValues(
       "continuity.readiness": submission.values.readinessPlan,
     } as Record<string, string | string[]>;
   }
+  const planning = submission.values.planning;
   return {
-    "financial.assets": submission.values.assets.map(
-      (asset) => `${asset.category}:${asset.approximateValue}`,
-    ),
-    "financial.liabilities": submission.values.liabilities.map(
-      (liability) => `${liability.category}:${liability.approximateValue}`,
-    ),
+    "financial.assets": planning.materialAssetsStatus,
+    "financial.liabilities": planning.liabilitiesStatus,
+    "financial.expected_inheritance": planning.expectedInheritanceRange,
     "financial.monthly_expenses": String(submission.values.lifestyle.monthlyExpenses),
     "financial.recurring_income": submission.values.lifestyle.incomeSources.map(
       (source) => `${source.source}:${source.monthlyAmount}`,
@@ -354,7 +375,13 @@ function sectionMetaValues(
       `buffer:${submission.values.lifestyle.safetyBufferPercent}`,
       "withdrawal:4",
     ],
-    "financial.security_floor": "calculated from structured inputs",
+    "financial.security_floor": planning.lifetimeSecurityFloor.selection,
+    "financial.assets_counted_toward_floor":
+      planning.assetsCountedTowardFloor,
+    "financial.retained_control":
+      planning.retainedControlRequirement.selection,
+    "financial.extraordinary_obligations":
+      planning.extraordinaryFutureObligations.selection,
   } as Record<string, string | string[]>;
 }
 
@@ -369,6 +396,8 @@ function currency(value: number) {
 function financialRangeProjection(
   profile: FinancialProfile,
 ): FinancialRangeValues {
+  const statusValue = (value: "provided" | "none" | "unknown" | "not_decided") =>
+    value === "not_decided" ? "not decided" : value;
   const retainedAssets = retainedIncomeProducingAssets(profile);
   const countedAssets = retainedAssets.length
     ? retainedAssets
@@ -379,17 +408,61 @@ function financialRangeProjection(
         .join("; ")
     : "none identified from recurring income sources";
   const calculations = profile.calculations;
+  const planning = profile.planning;
+  const inheritanceRanges = {
+    none: "none",
+    under_1m: "under $1 million",
+    "1m_to_5m": "$1 million to $5 million",
+    "5m_to_10m": "$5 million to $10 million",
+    "10m_to_25m": "$10 million to $25 million",
+    "25m_to_50m": "$25 million to $50 million",
+    over_50m: "over $50 million",
+    unknown: "unknown",
+    not_decided: "not decided",
+  } as const;
+  const lifetimeSecurityFloor =
+    planning.lifetimeSecurityFloor.selection === "calculated"
+      ? `${currency(calculations.recommendedControllableEstateFloor)} recommended controllable-estate floor`
+      : planning.lifetimeSecurityFloor.selection === "custom"
+        ? `${currency(planning.lifetimeSecurityFloor.customAmount!)} principal-entered lifetime-security floor`
+        : statusValue(planning.lifetimeSecurityFloor.selection);
+  const assetsCountedTowardFloor =
+    planning.assetsCountedTowardFloor === "linked_income_producing_assets"
+      ? countedAssets
+      : planning.assetsCountedTowardFloor === "not_decided"
+        ? "not decided"
+        : planning.assetsCountedTowardFloor;
+  const retainedControlRequirement =
+    planning.retainedControlRequirement.selection === "provided"
+      ? planning.retainedControlRequirement.detail
+      : statusValue(planning.retainedControlRequirement.selection);
+  const extraordinaryFutureObligations =
+    planning.extraordinaryFutureObligations.selection === "provided"
+      ? [
+          planning.extraordinaryFutureObligations.detail,
+          planning.extraordinaryFutureObligations.approximateValue === null
+            ? null
+            : `${currency(planning.extraordinaryFutureObligations.approximateValue)} approximate amount`,
+        ]
+          .filter(Boolean)
+          .join("; ")
+      : statusValue(planning.extraordinaryFutureObligations.selection);
 
   return FinancialRangeValuesSchema.parse({
-    materialAssetsRange: `${currency(calculations.totalAssets)} total assets (structured estimate)`,
-    liabilitiesRange: `${currency(calculations.totalLiabilities)} total liabilities (structured estimate)`,
+    materialAssetsRange:
+      planning.materialAssetsStatus === "provided"
+        ? `${currency(calculations.totalAssets)} total assets (structured estimate)`
+        : statusValue(planning.materialAssetsStatus),
+    liabilitiesRange:
+      planning.liabilitiesStatus === "provided"
+        ? `${currency(calculations.totalLiabilities)} total liabilities (structured estimate)`
+        : statusValue(planning.liabilitiesStatus),
     expectedInheritanceRange:
-      "not assessed in this structured planning-level security calculation",
-    lifetimeSecurityFloor: `${currency(calculations.recommendedControllableEstateFloor)} recommended controllable-estate floor`,
-    assetsCountedTowardFloor: countedAssets,
-    retainedControlRequirement: `retain the recommended controllable-estate floor, including ${currency(calculations.retainedIncomeProducingAssets)} of user-identified income-producing assets`,
-    extraordinaryFutureObligations:
-      "reflected only when entered in structured liabilities or recurring monthly expenses",
+      inheritanceRanges[planning.expectedInheritanceRange],
+    lifetimeSecurityFloor,
+    assetsCountedTowardFloor,
+    retainedControlRequirement,
+    extraordinaryFutureObligations,
   });
 }
 
