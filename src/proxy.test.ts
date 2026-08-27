@@ -16,7 +16,12 @@ beforeEach(() => {
 });
 
 describe("Supabase session refresh boundary", () => {
-  it.each(["/auth/callback", "/auth/callback/"])(
+  it.each([
+    "/auth/callback",
+    "/auth/callback/",
+    "/auth/confirm",
+    "/auth/confirm/",
+  ])(
     "does not refresh a prior session while %s exchanges a new session",
     async (pathname) => {
       expect(shouldRefreshSupabaseSession(pathname)).toBe(false);

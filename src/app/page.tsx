@@ -17,7 +17,9 @@ export default async function LandingPage({
     <LoginExperience
       syntheticMode={process.env.EC_SYNTHETIC_TEST_MODE === "true"}
       initialStatus={
-        auth === "failed"
+        auth === "invite_failed"
+          ? "That invitation link is invalid or has expired. Ask your administrator for a new invitation. If you already accepted an invitation, sign in below."
+          : auth === "failed"
           ? "That sign-in link could not be used. Request a new link below."
           : ""
       }
